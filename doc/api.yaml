@@ -2,8 +2,8 @@ openapi: 3.0.0
 servers:
   - url: "http://localhost:3000"
 info:
-  title: Fantastic Coffee (decaffeinated)
-  description: Fantastic Coffee (decaffeinated), the skeleton project for Web and Software architecture course
+  title: WASAText
+  description: API For WASAText
   version: 1.0.0
 paths:
   /status:
