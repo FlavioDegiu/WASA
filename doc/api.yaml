@@ -5,9 +5,10 @@ info:
   version: "1.0.0"
 
 servers:
-  - url: http://localhost:3000
+  - url: http://localhost:3000 
 
-tags:
+#logical endpoints grouping for better documentation and client generation
+tags:           
   - name: login
   - name: users
   - name: conversations
@@ -15,10 +16,15 @@ tags:
   - name: messages
   - name: comments
 
+#all endpoints require bearerAuth authentication by default
+#after login, user will use the returned identifier as Bearer token in the Authorization header for all subsequent requests. The API will use this token to identify the user and authorize access to resources.
 security:
   - bearerAuth: []
 
+#endpoints
 paths:
+  
+  #login endpoint, which also serves as registration since a new user is created if the provided username does not exist. This is the only endpoint that does not require authentication, since it's used to obtain the token in the first place.
   /session:
     post:
       tags: [login]
@@ -28,7 +34,7 @@ paths:
         If the username already exists, the user is logged in.
         The returned identifier must be used in the Authorization header as Bearer token.
       operationId: doLogin
-      security: []
+      security: [] #only endpoint that does not require authentication, since it's used to obtain the token in the first place
       requestBody:
         required: true
         content:
@@ -49,6 +55,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  #users endpoints for retrieving all user profiles, optionally filtered by username substring
   /users:
     get:
       tags: [users]
@@ -78,6 +85,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  #returns current user profile based on the provided Bearer token, which is used to identify the user
   /users/me:
     get:
       tags: [users]
@@ -97,6 +105,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  #endpoint for updating the current user's username
   /users/me/name:
     put:
       tags: [users]
@@ -134,6 +143,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  #endpoint for updating the current user's profile photo
   /users/me/photo:
     put:
       tags: [users]
@@ -165,6 +175,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  #endpoint for retrieving the current user's conversations, sorted by latest activity (get)
+  #and for creating a new conversation, either direct or group. For direct conversations, only one member (other than the creator) should be specified. For group conversations, at least one member should be specified and a name is required (post)
   /conversations:
     get:
       tags: [conversations]
@@ -184,7 +196,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-
+    
     post:
       tags: [conversations]
       summary: Create a new conversation
@@ -222,6 +234,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  #endpoint for retrieving a conversation with all its messages. The user must be a member of the conversation to access it
   /conversations/{conversationId}:
     get:
       tags: [conversations]
@@ -255,6 +268,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  #endpoint for sending a new message in a conversation. The user must be a member of the conversation to send messages in it
   /conversations/{conversationId}/messages:
     post:
       tags: [messages]
@@ -300,6 +314,37 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  #endpoint for marking a message as read
+  /messages/{messageId}/read:
+    put:
+      tags: [messages]
+      summary: Mark a message as read
+      operationId: markMessageAsRead
+      parameters:
+        - $ref: "#/components/parameters/MessageId"
+      responses:
+        "204":
+          description: Message marked as read
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  #endpoint for forwarding an existing message to another conversation. The user must be a member of both the source and destination conversations to forward messages between them
   /messages/{messageId}/forward:
     post:
       tags: [messages]
@@ -345,6 +390,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  #endpoint for deleting a sent message. Only the sender can delete a message, and it will be marked as deleted but not removed from the conversation history to preserve the context of replies and forwards
   /messages/{messageId}:
     delete:
       tags: [messages]
@@ -374,6 +420,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  #endpoint for adding a reaction/comment to a message. The user must be a member of the conversation to which the message belongs to comment on it
   /messages/{messageId}/comments:
     post:
       tags: [comments]
@@ -419,6 +466,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  #endpoint for removing a reaction/comment from a message. Only the comment author can remove it
   /messages/{messageId}/comments/{commentId}:
     delete:
       tags: [comments]
@@ -449,6 +497,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  #endpoint for adding a user to a group conversation
   /groups/{groupId}/members:
     post:
       tags: [groups]
@@ -500,6 +549,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  #endpoint that allows tha authenticated user to leave a group conversation they are a member of
   /groups/{groupId}/members/me:
     delete:
       tags: [groups]
@@ -529,6 +579,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  #endpoint for updating the name of a group conversation. The user must be a member of the group to update its name
   /groups/{groupId}/name:
     put:
       tags: [groups]
@@ -574,6 +625,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  #endpoint for updating the photo of a group conversation. The user must be a member of the group to update its photo
   /groups/{groupId}/photo:
     put:
       tags: [groups]
@@ -626,6 +678,7 @@ components:
       scheme: bearer
       bearerFormat: UserIdentifier
 
+  #standard input parameters that are reused across multiple endpoints to avoid repetition and ensure consistency in parameter definitions
   parameters:
     ConversationId:
       name: conversationId
@@ -664,6 +717,9 @@ components:
         minLength: 1
 
   schemas:
+
+    #loginRequest schema represents the payload for the login endpoint, which also serves as registration
+    #It requires a username that must be between 3 and 16 characters long and can contain any character (pattern '^.*?$' allows all characters)
     LoginRequest:
       type: object
       required:
@@ -685,6 +741,8 @@ components:
           type: string
           example: "abcdef012345"
 
+    #schema that creates an object for updating the user's username
+    #the username must be between 3 and 16 characters long and can only contain letters, numbers, and underscores (pattern '^[A-Za-z0-9_]+$')
     UpdateUserNameRequest:
       type: object
       required:
@@ -696,18 +754,26 @@ components:
           maxLength: 16
           pattern: '^[A-Za-z0-9_]+$'
           example: new_username
-
+    
+    #schema that creates an object for updating the user's photo
     UpdatePhotoRequest:
       type: object
       required:
         - photo
       properties:
         photo:
-          type: string
-          description: Profile or group photo encoded as URL or base64 string.
-          minLength: 1
-          example: "https://example.com/photo.png"
+          $ref: "#/components/schemas/photo"
 
+    #schema that creates a reusable definition for a photo field, which can be used for both user profile photos and group conversation photos
+    #the photo is represented as a string that can be either a URL or a local path, and it is nullable to allow users or groups without a photo
+    photo:
+      type: string
+      nullable: false
+      description: URL or local path of the profile/group photo
+      example: "/static/users/user123.png"
+
+    #schema that creates an object for creating a new conversation, either direct or group.
+    #for direct conversations, only one member (other than the creator) should be specified. For group conversations, at least one member should be specified and a name is required
     CreateConversationRequest:
       type: object
       required:
@@ -724,16 +790,19 @@ components:
           maxLength: 32
           example: Study Group
         photo:
-          type: string
-          description: Optional group photo
-          example: "https://example.com/group.png"
+          $ref: "#/components/schemas/photo"
         members:
           type: array
           minItems: 1
           items:
             type: string
-          example: ["user123", "user456"]
+          example: ["user_001"]
 
+    #schema that creates an object for sending a new message in a conversation
+    #The message type can be text, gif, or image, and the content is a string that represents the message content
+    #For text messages, the content is the text itself
+    #For gif and image messages, the content is a URL string representing the media
+    #The replyToMessageId field is optional and can be used to indicate that this message is a reply to another message in the conversation
     SendMessageRequest:
       type: object
       required:
@@ -753,6 +822,7 @@ components:
           nullable: true
           example: "msg_001"
 
+    #schema that creates an object for forwarding an existing message to another conversation
     ForwardMessageRequest:
       type: object
       required:
@@ -762,6 +832,7 @@ components:
           type: string
           example: "conv_002"
 
+    #schema that creates an object for adding a reaction to a message
     CommentMessageRequest:
       type: object
       required:
@@ -774,6 +845,7 @@ components:
           maxLength: 32
           example: "😀"
 
+    #schema that creates an object for adding a user to a group conversation
     AddToGroupRequest:
       type: object
       required:
@@ -783,6 +855,7 @@ components:
           type: string
           example: "user789"
 
+    #schema that creates an object for updating the name of a group conversation
     UpdateGroupNameRequest:
       type: object
       required:
@@ -794,6 +867,7 @@ components:
           maxLength: 32
           example: New Group Name
 
+    #schema representing a user profile. The photo field is nullable to allow users without a profile picture
     User:
       type: object
       required:
@@ -802,15 +876,14 @@ components:
       properties:
         id:
           type: string
-          example: "user123"
+          example: "user_001"
         username:
           type: string
           example: "Maria"
         photo:
-          type: string
-          nullable: true
-          example: "https://example.com/user.png"
+          $ref: "#/components/schemas/photo"
 
+    #schema representing a list of users, used for responses that return multiple user profiles
     UserList:
       type: object
       required:
@@ -821,6 +894,7 @@ components:
           items:
             $ref: "#/components/schemas/User"
 
+    #schema representing a conversation summary, which includes basic information about the conversation and a preview of the last message
     ConversationSummary:
       type: object
       required:
@@ -839,15 +913,14 @@ components:
           type: string
           example: "Luca"
         photo:
-          type: string
-          nullable: true
-          example: "https://example.com/avatar.png"
+          $ref: "#/components/schemas/photo"
         updatedAt:
           type: string
           format: date-time
         lastMessage:
           $ref: "#/components/schemas/ConversationPreview"
 
+    #schema representing a preview of a conversation's last message, used in the conversation summary
     ConversationPreview:
       type: object
       properties:
@@ -861,11 +934,12 @@ components:
           example: "See you later"
         senderId:
           type: string
-          example: "user123"
+          example: "user_001"
         createdAt:
           type: string
           format: date-time
 
+    #schema representing a list of conversation summaries, used for responses that return the current user's conversations
     ConversationSummaryList:
       type: object
       required:
@@ -876,6 +950,7 @@ components:
           items:
             $ref: "#/components/schemas/ConversationSummary"
 
+    #schema representing a conversation with all its messages. The user must be a member of the conversation to access it
     Conversation:
       type: object
       required:
@@ -895,9 +970,7 @@ components:
           nullable: true
           example: "Study Group"
         photo:
-          type: string
-          nullable: true
-          example: "https://example.com/group.png"
+          $ref: "#/components/schemas/photo"
         members:
           type: array
           items:
@@ -907,6 +980,9 @@ components:
           items:
             $ref: "#/components/schemas/Message"
 
+    #schema representing a message in a conversation, which can be of type text, gif, or image
+    #the content field represents the message content, which is either the text itself for text messages or a URL string for media messages
+    #the message also includes metadata such as the sender, creation time, delivery and read status, and any comments/reactions associated with it
     Message:
       type: object
       required:
@@ -927,7 +1003,7 @@ components:
           example: "conv_001"
         senderId:
           type: string
-          example: "user123"
+          example: "user_001"
         senderUsername:
           type: string
           example: "Maria"
@@ -959,6 +1035,7 @@ components:
           items:
             $ref: "#/components/schemas/Comment"
 
+    #schema representing the delivery and read status of a message, indicating whether it has been delivered to all conversation members and whether it has been read by all members
     MessageStatus:
       type: object
       required:
@@ -972,6 +1049,7 @@ components:
           type: boolean
           example: false
 
+    #schema representing a comment added to a message, which includes the comment content, the author, and the creation time
     Comment:
       type: object
       required:
@@ -983,13 +1061,13 @@ components:
       properties:
         id:
           type: string
-          example: "c_001"
+          example: "comm_001"
         messageId:
           type: string
           example: "msg_001"
         authorId:
           type: string
-          example: "user456"
+          example: "user_001"
         authorUsername:
           type: string
           example: "Luca"
