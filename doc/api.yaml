@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: WASAText API
   description: API for the WASAText messaging application.
-  version: "1.0.0"
+  version: "1.0.2"
 
 servers:
   - url: http://localhost:3000 
@@ -71,6 +71,7 @@ paths:
             type: string
             minLength: 1
             maxLength: 16
+            pattern: '^.+$'
       responses:
         "200":
           description: Users retrieved successfully
@@ -90,6 +91,7 @@ paths:
     get:
       tags: [users]
       summary: Get current user profile
+      description: Get current user profile
       operationId: getMyProfile
       responses:
         "200":
@@ -110,6 +112,7 @@ paths:
     put:
       tags: [users]
       summary: Update my username
+      description: Update my username
       operationId: setMyUserName
       requestBody:
         required: true
@@ -148,6 +151,7 @@ paths:
     put:
       tags: [users]
       summary: Update my profile photo
+      description: Update my profile photo
       operationId: setMyPhoto
       requestBody:
         required: true
@@ -239,6 +243,7 @@ paths:
     get:
       tags: [conversations]
       summary: Get a conversation with all messages
+      description: Get a conversation with all messages
       operationId: getConversation
       parameters:
         - $ref: "#/components/parameters/ConversationId"
@@ -273,6 +278,7 @@ paths:
     post:
       tags: [messages]
       summary: Send a new message
+      description: Send a new message (text, image, gif)
       operationId: sendMessage
       parameters:
         - $ref: "#/components/parameters/ConversationId"
@@ -319,6 +325,7 @@ paths:
     put:
       tags: [messages]
       summary: Mark a message as read
+      description: Mark a message as read
       operationId: markMessageAsRead
       parameters:
         - $ref: "#/components/parameters/MessageId"
@@ -349,6 +356,7 @@ paths:
     post:
       tags: [messages]
       summary: Forward a message
+      description: Forward a message
       operationId: forwardMessage
       parameters:
         - $ref: "#/components/parameters/MessageId"
@@ -395,6 +403,7 @@ paths:
     delete:
       tags: [messages]
       summary: Delete one of my sent messages
+      description: Delete one of my sent messages (mark as deleted)
       operationId: deleteMessage
       parameters:
         - $ref: "#/components/parameters/MessageId"
@@ -425,6 +434,7 @@ paths:
     post:
       tags: [comments]
       summary: Add a reaction/comment to a message
+      description: Add a reaction emoticon to a message
       operationId: commentMessage
       parameters:
         - $ref: "#/components/parameters/MessageId"
@@ -471,6 +481,7 @@ paths:
     delete:
       tags: [comments]
       summary: Remove one of my reactions/comments from a message
+      description: Remove one of my reactions emoticons from a message
       operationId: uncommentMessage
       parameters:
         - $ref: "#/components/parameters/MessageId"
@@ -502,6 +513,7 @@ paths:
     post:
       tags: [groups]
       summary: Add a user to a group
+      description: Add a user to a group he is not in
       operationId: addToGroup
       parameters:
         - $ref: "#/components/parameters/GroupId"
@@ -554,6 +566,7 @@ paths:
     delete:
       tags: [groups]
       summary: Leave a group
+      description: Leave a group the user is a part of
       operationId: leaveGroup
       parameters:
         - $ref: "#/components/parameters/GroupId"
@@ -584,6 +597,7 @@ paths:
     put:
       tags: [groups]
       summary: Update group name
+      description: Update group name
       operationId: setGroupName
       parameters:
         - $ref: "#/components/parameters/GroupId"
@@ -630,6 +644,7 @@ paths:
     put:
       tags: [groups]
       summary: Update group photo
+      description: Update group photo
       operationId: setGroupPhoto
       parameters:
         - $ref: "#/components/parameters/GroupId"
@@ -687,7 +702,9 @@ components:
       description: Conversation identifier
       schema:
         type: string
-        minLength: 1
+        minLength: 4
+        maxLength: 64
+        pattern: '^.+$'
 
     GroupId:
       name: groupId
@@ -696,7 +713,9 @@ components:
       description: Group conversation identifier
       schema:
         type: string
-        minLength: 1
+        minLength: 4
+        maxLength: 64
+        pattern: '^.+$'
 
     MessageId:
       name: messageId
@@ -705,7 +724,9 @@ components:
       description: Message identifier
       schema:
         type: string
-        minLength: 1
+        minLength: 4
+        maxLength: 64
+        pattern: '^.+$'
 
     CommentId:
       name: commentId
@@ -714,7 +735,9 @@ components:
       description: Comment identifier
       schema:
         type: string
-        minLength: 1
+        minLength: 4
+        maxLength: 64
+        pattern: '^.+$'
 
   schemas:
 
@@ -722,42 +745,53 @@ components:
     #It requires a username that must be between 3 and 16 characters long and can contain any character (pattern '^.*?$' allows all characters)
     LoginRequest:
       type: object
+      description: represents the payload for the login endpoint, which also serves as registration
       required:
         - name
       properties:
         name:
           type: string
-          example: Maria
+          description: the username of the user that is logging in/registering. Can contain any character
+          example: Maria_1604
           pattern: '^.*?$'
           minLength: 3
           maxLength: 16
 
+    #loginResponse schema that represents the object for the unique access identifier
     LoginResponse:
       type: object
+      description: represents the payload for the login response, which gives the unique access identifier
       required:
         - identifier
       properties:
         identifier:
           type: string
+          description: unique access identifier object
           example: "abcdef012345"
+          pattern: '^.+$'
+          minLength: 1
+          maxLength: 64
 
     #schema that creates an object for updating the user's username
-    #the username must be between 3 and 16 characters long and can only contain letters, numbers, and underscores (pattern '^[A-Za-z0-9_]+$')
+    #the username must be between 3 and 16 characters long and can contain any character (pattern '^.*?$' allows all characters)
     UpdateUserNameRequest:
       type: object
+      description: represents the payload for updating a user's username
       required:
         - name
       properties:
         name:
           type: string
+          description: the new username of the user. Can contain any character
           minLength: 3
           maxLength: 16
-          pattern: '^[A-Za-z0-9_]+$'
-          example: new_username
+          pattern: '^.*?$'
+          example: Maria_1604
     
     #schema that creates an object for updating the user's photo
     UpdatePhotoRequest:
       type: object
+      description: schema that creates an object for updating the user's photo
       required:
         - photo
       properties:
@@ -768,34 +802,45 @@ components:
     #the photo is represented as a string that can be either a URL or a local path, and it is nullable to allow users or groups without a photo
     photo:
       type: string
-      nullable: false
+      minLength: 1
+      maxLength: 512
       description: URL or local path of the profile/group photo
       example: "/static/users/user123.png"
+      pattern: '^(https?://.+|/.+)$'
 
     #schema that creates an object for creating a new conversation, either direct or group.
     #for direct conversations, only one member (other than the creator) should be specified. For group conversations, at least one member should be specified and a name is required
     CreateConversationRequest:
       type: object
+      description: schema that creates an object for creating a new conversation, either direct or group.
       required:
         - members
         - isGroup
       properties:
         isGroup:
           type: boolean
+          description: true if the new chat is a group chat
           example: false
         name:
           type: string
-          description: Required only for group conversations
+          description: The name of the group chat. Required only for group conversations
           minLength: 1
           maxLength: 32
+          pattern: '^.*?$'
           example: Study Group
         photo:
           $ref: "#/components/schemas/photo"
         members:
           type: array
+          description: the array that contains the list of the users in the chat (one if direct chat, one or more if group chat)
           minItems: 1
+          maxItems: 16
           items:
             type: string
+            description: the id of a user that is in the chat
+            pattern: '^.*?$'
+            minLength: 1
+            maxLength: 64
           example: ["user_001"]
 
     #schema that creates an object for sending a new message in a conversation
@@ -805,98 +850,136 @@ components:
     #The replyToMessageId field is optional and can be used to indicate that this message is a reply to another message in the conversation
     SendMessageRequest:
       type: object
+      description: object for sending a new message in a conversation
       required:
         - type
         - content
       properties:
         type:
           type: string
+          pattern: '[a-z]'
+          minLength: 3
+          maxLength: 5
+          description: the type of message that has been sent (text, gif, image)
           enum: [text, gif, image]
           example: text
         content:
           type: string
+          description: the content of the message
           minLength: 1
+          maxLength: 4096
           example: Hello!
         replyToMessageId:
           type: string
-          nullable: true
+          minLength: 1
+          maxLength: 64
+          description: the id of the message that this message is replying to. Null if this message does not reply to any other message
           example: "msg_001"
 
     #schema that creates an object for forwarding an existing message to another conversation
     ForwardMessageRequest:
       type: object
+      description: object for forwarding an existing message to another conversation
       required:
         - conversationId
       properties:
         conversationId:
           type: string
+          minLength: 1
+          maxLength: 64
+          description: the id of the conversation the forwarded message is being sent to
+          pattern: '^.*?$'
           example: "conv_002"
 
     #schema that creates an object for adding a reaction to a message
     CommentMessageRequest:
       type: object
+      description: object for adding a reaction to a message
       required:
         - content
       properties:
         content:
           type: string
-          description: Emoticon or short reaction text
+          description: Emoticon
           minLength: 1
-          maxLength: 32
+          maxLength: 1
+          pattern: '^.*?$'
           example: "😀"
 
     #schema that creates an object for adding a user to a group conversation
     AddToGroupRequest:
       type: object
+      description: object for adding a user to a group conversation
       required:
         - userId
       properties:
         userId:
           type: string
-          example: "user789"
+          minLength: 1
+          maxLength: 64
+          pattern: '^.*?$'
+          description: the id of the user to be added to the group chat
+          example: "user_001"
 
     #schema that creates an object for updating the name of a group conversation
     UpdateGroupNameRequest:
       type: object
+      description: object for updating the name of a group conversation
       required:
         - name
       properties:
         name:
           type: string
+          description: the new name of the group conversation
           minLength: 1
           maxLength: 32
           example: New Group Name
+          pattern: '^.*?$'
 
     #schema representing a user profile. The photo field is nullable to allow users without a profile picture
     User:
       type: object
+      description: user profile
       required:
         - id
         - username
       properties:
         id:
           type: string
+          minLength: 1
+          maxLength: 64
+          description: the user id
+          pattern: '^.*?$'
           example: "user_001"
         username:
           type: string
-          example: "Maria"
+          minLength: 1
+          maxLength: 64
+          description: the username
+          pattern: '^.*?$'
+          example: "Maria_1604"
         photo:
           $ref: "#/components/schemas/photo"
 
     #schema representing a list of users, used for responses that return multiple user profiles
     UserList:
       type: object
+      description: a list of users
       required:
         - items
       properties:
         items:
           type: array
+          description: an array of user objects
+          minItems: 0
+          maxItems: 1000
           items:
             $ref: "#/components/schemas/User"
 
     #schema representing a conversation summary, which includes basic information about the conversation and a preview of the last message
     ConversationSummary:
       type: object
+      description: conversation summary, which includes basic information about the conversation and a preview of the last message
       required:
         - id
         - isGroup
@@ -905,17 +988,30 @@ components:
       properties:
         id:
           type: string
+          minLength: 1
+          maxLength: 64
+          description: the id of the conversation
+          pattern: '^.*?$'
           example: "conv_001"
         isGroup:
           type: boolean
+          description: true if the conversation is a group conversation
           example: false
         title:
           type: string
+          minLength: 1
+          maxLength: 64
           example: "Luca"
+          description: the name of the conversation
+          pattern: '^.*?$'
         photo:
           $ref: "#/components/schemas/photo"
         updatedAt:
           type: string
+          minLength: 1
+          maxLength: 32
+          pattern: '^.*?$'
+          description: the timestamp of the last message in the conversation
           format: date-time
         lastMessage:
           $ref: "#/components/schemas/ConversationPreview"
@@ -923,36 +1019,61 @@ components:
     #schema representing a preview of a conversation's last message, used in the conversation summary
     ConversationPreview:
       type: object
+      description: preview of a conversation's last message, used in the conversation summary
+      required: 
+        - type
+        - senderId
+        - createdAt
       properties:
         type:
           type: string
+          minLength: 3
+          maxLength: 5
+          pattern: '[a-z]'
+          description: the type of the last message (text, gif, image)
           enum: [text, gif, image]
           example: text
         snippet:
           type: string
-          nullable: true
+          minLength: 1
+          maxLength: 1024
+          pattern: '^.*?$'
+          description: a short version of the content of the last message
           example: "See you later"
         senderId:
           type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^.*?$'
+          description: the user if of the sender of the last message
           example: "user_001"
         createdAt:
           type: string
+          minLength: 1
+          maxLength: 32
+          pattern: '^.*?$'
+          description: timestamp of the last message in the conversation
           format: date-time
 
     #schema representing a list of conversation summaries, used for responses that return the current user's conversations
     ConversationSummaryList:
       type: object
+      description: list of conversation summaries, used for responses that return the current user's conversations
       required:
         - items
       properties:
         items:
           type: array
+          description: an array of conversation summaries
+          minItems: 0
+          maxItems: 1000
           items:
             $ref: "#/components/schemas/ConversationSummary"
 
     #schema representing a conversation with all its messages. The user must be a member of the conversation to access it
     Conversation:
       type: object
+      description: conversation with all its messages
       required:
         - id
         - isGroup
@@ -961,22 +1082,36 @@ components:
       properties:
         id:
           type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^.*?$'
+          description: the id of the conversation
           example: "conv_001"
         isGroup:
           type: boolean
+          description: true if the conversation is a group conversation
           example: true
         name:
           type: string
-          nullable: true
+          minLength: 1
+          maxLength: 64
+          pattern: '^.*?$'
+          description: the name of the conversation
           example: "Study Group"
         photo:
           $ref: "#/components/schemas/photo"
         members:
           type: array
+          minItems: 0
+          maxItems: 16
+          description: an array of users members of the conversation
           items:
             $ref: "#/components/schemas/User"
         messages:
           type: array
+          description: an array of messages sent in the conversation
+          minItems: 0
+          maxItems: 4096
           items:
             $ref: "#/components/schemas/Message"
 
@@ -985,6 +1120,7 @@ components:
     #the message also includes metadata such as the sender, creation time, delivery and read status, and any comments/reactions associated with it
     Message:
       type: object
+      description: message in a conversation
       required:
         - id
         - conversationId
@@ -997,61 +1133,103 @@ components:
       properties:
         id:
           type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^.*?$'
+          description: the id of the message
           example: "msg_001"
         conversationId:
           type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^.*?$'
+          description: the id of the conversation the message is in
           example: "conv_001"
         senderId:
           type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^.*?$'
+          description: the user id of the sender of the message
           example: "user_001"
         senderUsername:
           type: string
-          example: "Maria"
+          minLength: 1
+          maxLength: 64
+          pattern: '^.*?$'
+          description: the username of the sender of the message
+          example: "Maria-0327"
         type:
           type: string
+          minLength: 3
+          maxLength: 5
+          pattern: '[a-z]'
+          description: the type of the message (text, gif, image)
           enum: [text, gif, image]
           example: text
         content:
           type: string
+          minLength: 1
+          maxLength: 4096
+          pattern: '^.*?$'
+          description: the content of the message
           example: "Hello everyone"
         replyToMessageId:
           type: string
-          nullable: true
+          minLength: 1
+          maxLength: 64
+          pattern: '^.*?$'
+          description: the id of the message that this message is replying to. Null if not replying to any message
           example: "msg_000"
         forwardedFromMessageId:
           type: string
-          nullable: true
+          minLength: 1
+          maxLength: 64
+          pattern: '^.*?$'
+          description: the id of the message that this message is being forwarded from. Null if not forwarded from any message
           example: "msg_777"
         createdAt:
           type: string
+          minLength: 1
+          maxLength: 32
+          pattern: '^.*?$'
+          description: timestamp for when this message has been sent
           format: date-time
         deleted:
           type: boolean
+          description: true if this message has been deleted from the sender
           example: false
         status:
           $ref: "#/components/schemas/MessageStatus"
         comments:
           type: array
+          description: an array of comments that are attached to this message
+          minItems: 0
+          maxItems: 16
           items:
             $ref: "#/components/schemas/Comment"
 
     #schema representing the delivery and read status of a message, indicating whether it has been delivered to all conversation members and whether it has been read by all members
     MessageStatus:
       type: object
+      description: delivery and read status of a message, indicating whether it has been delivered to all conversation members and whether it has been read by all members
       required:
         - deliveredToAll
         - readByAll
       properties:
         deliveredToAll:
+          description: true if delivered by all the conversation members
           type: boolean
           example: true
         readByAll:
           type: boolean
+          description: true if read by all the conversation members
           example: false
 
     #schema representing a comment added to a message, which includes the comment content, the author, and the creation time
     Comment:
       type: object
+      description: comment added to a message
       required:
         - id
         - messageId
@@ -1061,28 +1239,57 @@ components:
       properties:
         id:
           type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^.*?$'
+          description: the id of the comment
           example: "comm_001"
         messageId:
           type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^.*?$'
+          description: the id of the message this comment is attached to
           example: "msg_001"
         authorId:
           type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^.*?$'
+          description: the id of the user that attached this comment
           example: "user_001"
         authorUsername:
           type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^.*?$'
+          description: the username of the user that attached this comment
           example: "Luca"
         content:
           type: string
+          minLength: 1
+          maxLength: 1
+          pattern: '^.*?$'
+          description: the comment (Emoticon)
           example: "😀"
         createdAt:
           type: string
+          minLength: 1
+          maxLength: 32
+          pattern: '^.*?$'
+          description: the timestamp at wich this comment was added
           format: date-time
 
     Error:
       type: object
+      description: an error object
       required:
         - message
       properties:
         message:
           type: string
+          minLength: 1
+          maxLength: 4096
+          pattern: '^.*?$'
+          description: the string that explains the error
           example: "invalid request"
