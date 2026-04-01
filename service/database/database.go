@@ -34,14 +34,23 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/gofrs/uuid"
 )
+
+type User struct {
+	ID       string
+	Username string
+	Photo    string
+}
 
 // AppDatabase is the high level interface for the DB
 type AppDatabase interface {
-	GetName() (string, error)
-	SetName(name string) error
-
 	Ping() error
+
+	CreateUser(username string) (User, error)
+	GetUserByUsername(username string) (User, error)
+	GetUserByID(id string) (User, error)
 }
 
 type appdbimpl struct {
@@ -57,13 +66,20 @@ func New(db *sql.DB) (AppDatabase, error) {
 
 	// Check if table exists. If not, the database is empty, and we need to create the structure
 	var tableName string
-	err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='example_table';`).Scan(&tableName)
+	err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='users';`).Scan(&tableName)
 	if errors.Is(err, sql.ErrNoRows) {
-		sqlStmt := `CREATE TABLE example_table (id INTEGER NOT NULL PRIMARY KEY, name TEXT);`
+		sqlStmt := `
+		CREATE TABLE users (
+			id TEXT NOT NULL PRIMARY KEY,
+			username TEXT NOT NULL UNIQUE,
+			photo TEXT NOT NULL DEFAULT ''
+		);`
 		_, err = db.Exec(sqlStmt)
 		if err != nil {
 			return nil, fmt.Errorf("error creating database structure: %w", err)
 		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error checking database structure: %w", err)
 	}
 
 	return &appdbimpl{
@@ -73,4 +89,54 @@ func New(db *sql.DB) (AppDatabase, error) {
 
 func (db *appdbimpl) Ping() error {
 	return db.c.Ping()
+}
+
+func (db *appdbimpl) CreateUser(username string) (User, error) {
+	userID := "user_" + uuid.Must(uuid.NewV4()).String()
+
+	_, err := db.c.Exec(
+		`INSERT INTO users (id, username, photo) VALUES (?, ?, ?)`,
+		userID,
+		username,
+		"",
+	)
+	if err != nil {
+		return User{}, fmt.Errorf("error creating user: %w", err)
+	}
+
+	return User{
+		ID:       userID,
+		Username: username,
+		Photo:    "",
+	}, nil
+}
+
+func (db *appdbimpl) GetUserByUsername(username string) (User, error) {
+	var user User
+
+	err := db.c.QueryRow(
+		`SELECT id, username, photo FROM users WHERE username = ?`,
+		username,
+	).Scan(&user.ID, &user.Username, &user.Photo)
+
+	if err != nil {
+		return User{}, err
+	}
+
+	return user, nil
+}
+
+func (db *appdbimpl) GetUserByID(id string) (User, error) {
+	var user User
+
+	err := db.c.QueryRow(
+		`SELECT id, username, photo FROM users WHERE id = ?`,
+		id,
+	).Scan(&user.ID, &user.Username, &user.Photo)
+
+	if err != nil {
+		return User{}, err
+	}
+
+	return user, nil
 }

@@ -10,6 +10,10 @@ func (rt *_router) Handler() http.Handler {
 	rt.router.GET("/", rt.getHelloWorld)
 	rt.router.GET("/context", rt.wrap(rt.getContextReply))
 
+	// WASAText routes
+	rt.router.POST("/session", rt.wrap(rt.doLogin))
+	rt.router.GET("/users/me", rt.wrap(rt.getMyProfile))
+
 	// Special routes
 	rt.router.GET("/liveness", rt.liveness)
 
