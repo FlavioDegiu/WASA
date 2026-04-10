@@ -77,3 +77,38 @@ func (db *appdbimpl) ListConversationsByUser(userID string) ([]Conversation, err
 
 	return conversations, nil
 }
+
+// Returns one conversation only if the given user is a member of it.
+func (db *appdbimpl) GetConversationByIDForUser(conversationID string, userID string) (Conversation, error) {
+	var conv Conversation
+	var isGroupInt int
+
+	// We join with conversation_members so that a user can only read
+	// conversations they actually belong to.
+	err := db.c.QueryRow(
+		`SELECT c.id, c.is_group, c.name, c.photo
+		 FROM conversations c
+		 INNER JOIN conversation_members cm ON cm.conversation_id = c.id
+		 WHERE c.id = ? AND cm.user_id = ?`,
+		conversationID,
+		userID,
+	).Scan(&conv.ID, &isGroupInt, &conv.Name, &conv.Photo)
+	if err != nil {
+		return Conversation{}, err
+	}
+
+	// Convert the SQLite integer flag into a Go boolean.
+	conv.IsGroup = isGroupInt == 1
+
+	// Load the full list of members for this conversation.
+	members, err := db.getConversationMembers(conv.ID)
+	if err != nil {
+		return Conversation{}, fmt.Errorf("error loading conversation members: %w", err)
+	}
+	conv.Members = members
+
+	// Messages will be loaded later, when we implement them.
+	conv.Messages = nil
+
+	return conv, nil
+}

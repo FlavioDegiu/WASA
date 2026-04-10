@@ -28,6 +28,7 @@ func conversationToResponse(conv database.Conversation) map[string]interface{} {
 		"messages": []interface{}{},
 	}
 
+	// Add optional fields only when present.
 	if conv.Name != "" {
 		resp["name"] = conv.Name
 	}
@@ -35,6 +36,7 @@ func conversationToResponse(conv database.Conversation) map[string]interface{} {
 		resp["photo"] = conv.Photo
 	}
 
+	//TO-DO empty array for messages
 	return resp
 }
 
@@ -201,4 +203,44 @@ func (rt *_router) getMyConversations(w http.ResponseWriter, r *http.Request, ps
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"items": items,
 	})
+}
+
+// Returns one conversation if the authenticated user belongs to it.
+func (rt *_router) getConversation(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	// Extract the authenticated user from the Bearer token.
+	userID, ok := getBearerToken(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, errorResponse{
+			Message: "missing or invalid Authorization header",
+		})
+		return
+	}
+
+	// Read the conversation ID from the URL path.
+	conversationID := ps.ByName("conversationId")
+	if conversationID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Message: "missing conversation identifier",
+		})
+		return
+	}
+
+	// Load the conversation, but only if this user belongs to it.
+	conv, err := rt.db.GetConversationByIDForUser(conversationID, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, errorResponse{
+				Message: "conversation not found",
+			})
+			return
+		}
+
+		ctx.Logger.WithError(err).Error("cannot load conversation")
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Message: "internal server error",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, conversationToResponse(conv))
 }

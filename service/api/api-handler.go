@@ -19,6 +19,7 @@ func (rt *_router) Handler() http.Handler {
 
 	rt.router.POST("/conversations", rt.wrap(rt.createConversation))
 	rt.router.GET("/conversations", rt.wrap(rt.getMyConversations))
+	rt.router.GET("/conversations/:conversationId", rt.wrap(rt.getConversation))
 
 	// Special routes
 	rt.router.GET("/liveness", rt.liveness)

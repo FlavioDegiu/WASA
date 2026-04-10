@@ -45,11 +45,17 @@ type User struct {
 
 // Conversation element, containing Users, ID, group boolean and a photo
 type Conversation struct {
-	ID      string
-	IsGroup bool
-	Name    string
-	Photo   string
-	Members []User
+	ID       string
+	IsGroup  bool
+	Name     string
+	Photo    string
+	Members  []User
+	Messages []Message
+}
+
+// Message is a placeholder database model
+type Message struct {
+	ID string
 }
 
 // AppDatabase is the high level interface for the DB
@@ -65,6 +71,7 @@ type AppDatabase interface {
 
 	CreateConversation(currentUserID string, memberIDs []string, isGroup bool, name string, photo string) (Conversation, error)
 	ListConversationsByUser(userID string) ([]Conversation, error)
+	GetConversationByIDForUser(conversationID string, userID string) (Conversation, error)
 }
 
 type appdbimpl struct {
