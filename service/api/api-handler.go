@@ -18,6 +18,7 @@ func (rt *_router) Handler() http.Handler {
 	rt.router.PUT("/users/me/photo", rt.wrap(rt.setMyPhoto))
 
 	rt.router.POST("/conversations", rt.wrap(rt.createConversation))
+	rt.router.GET("/conversations", rt.wrap(rt.getMyConversations))
 
 	// Special routes
 	rt.router.GET("/liveness", rt.liveness)

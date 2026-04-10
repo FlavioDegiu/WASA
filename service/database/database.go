@@ -64,6 +64,7 @@ type AppDatabase interface {
 	UpdateUserPhoto(id string, photo string) (User, error)
 
 	CreateConversation(currentUserID string, memberIDs []string, isGroup bool, name string, photo string) (Conversation, error)
+	ListConversationsByUser(userID string) ([]Conversation, error)
 }
 
 type appdbimpl struct {

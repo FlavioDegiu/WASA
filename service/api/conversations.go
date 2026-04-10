@@ -132,3 +132,73 @@ func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps
 
 	writeJSON(w, http.StatusCreated, conversationToResponse(conv))
 }
+
+// Converts a database conversation into the smaller summary object used by GET /conversations.
+func conversationSummaryToResponse(conv database.Conversation, currentUserID string) map[string]interface{} {
+	title := conv.Name
+
+	// For direct conversations, the title should be the other user's username.
+	if !conv.IsGroup {
+		for _, member := range conv.Members {
+			if member.ID != currentUserID {
+				title = member.Username
+				break
+			}
+		}
+	}
+
+	resp := map[string]interface{}{
+		"id":        conv.ID,
+		"isGroup":   conv.IsGroup,
+		"title":     title,
+		"updatedAt": "",
+	}
+
+	// Add photo only if present.
+	if conv.Photo != "" {
+		resp["photo"] = conv.Photo
+	}
+
+	// For now we return a minimal preview placeholder.
+	// Later, when messages exist, we will replace this with the latest message preview.
+	resp["lastMessage"] = map[string]interface{}{
+		"type":      "text",
+		"snippet":   "",
+		"senderId":  "",
+		"createdAt": "",
+	}
+
+	return resp
+}
+
+// Returns all conversations of the authenticated user.
+func (rt *_router) getMyConversations(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	// Extract the authenticated user ID from the Bearer token.
+	userID, ok := getBearerToken(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, errorResponse{
+			Message: "missing or invalid Authorization header",
+		})
+		return
+	}
+
+	// Load all conversations for this user.
+	conversations, err := rt.db.ListConversationsByUser(userID)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot list user conversations")
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Message: "internal server error",
+		})
+		return
+	}
+
+	// Convert database conversations into API response objects.
+	items := make([]map[string]interface{}, 0, len(conversations))
+	for _, conv := range conversations {
+		items = append(items, conversationSummaryToResponse(conv, userID))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"items": items,
+	})
+}
