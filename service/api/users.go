@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"git.sapienzaapps.it/fantasticcoffee/fantastic-coffee-decaffeinated/service/api/reqcontext"
+	"git.sapienzaapps.it/fantasticcoffee/fantastic-coffee-decaffeinated/service/database"
 	"github.com/julienschmidt/httprouter"
 	"github.com/mattn/go-sqlite3"
 )
@@ -17,6 +18,15 @@ type updateUserNameRequest struct {
 }
 type updatePhotoRequest struct {
 	Photo string `json:"photo"`
+}
+
+// Converts a database user into the full API response object.
+func usersToResponse(users []database.User) []map[string]interface{} {
+	items := make([]map[string]interface{}, 0, len(users))
+	for _, user := range users {
+		items = append(items, userToResponse(user))
+	}
+	return items
 }
 
 func (rt *_router) getMyProfile(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {

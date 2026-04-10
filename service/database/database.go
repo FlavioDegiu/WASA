@@ -53,9 +53,18 @@ type Conversation struct {
 	Messages []Message
 }
 
-// Message is a placeholder database model
+// Message represents a message stored in the database.
 type Message struct {
-	ID string
+	ID                     string
+	ConversationID         string
+	SenderID               string
+	SenderUsername         string
+	Type                   string
+	Content                string
+	ReplyToMessageID       string
+	ForwardedFromMessageID string
+	CreatedAt              string
+	Deleted                bool
 }
 
 // AppDatabase is the high level interface for the DB
@@ -72,6 +81,9 @@ type AppDatabase interface {
 	CreateConversation(currentUserID string, memberIDs []string, isGroup bool, name string, photo string) (Conversation, error)
 	ListConversationsByUser(userID string) ([]Conversation, error)
 	GetConversationByIDForUser(conversationID string, userID string) (Conversation, error)
+
+	CreateMessage(conversationID string, senderID string, messageType string, content string, replyToMessageID string) (Message, error)
+	ListMessagesByConversationForUser(conversationID string, userID string) ([]Message, error)
 }
 
 type appdbimpl struct {
@@ -140,6 +152,31 @@ func New(db *sql.DB) (AppDatabase, error) {
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("error checking conversation_members table: %w", err)
+	}
+
+	var messagesTableName string
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='messages';`).Scan(&messagesTableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `
+		CREATE TABLE messages (
+			id TEXT NOT NULL PRIMARY KEY,
+			conversation_id TEXT NOT NULL,
+			sender_id TEXT NOT NULL,
+			type TEXT NOT NULL,
+			content TEXT NOT NULL,
+			reply_to_message_id TEXT NOT NULL DEFAULT '',
+			forwarded_from_message_id TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			deleted INTEGER NOT NULL DEFAULT 0,
+			FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+			FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+		);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating messages table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error checking messages table: %w", err)
 	}
 
 	return &appdbimpl{

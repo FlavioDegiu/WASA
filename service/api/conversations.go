@@ -19,13 +19,18 @@ type createConversationRequest struct {
 	Members []string `json:"members"`
 }
 
-// conversationToResponse adapts the database model to the JSON returned by the API.
+// Converts a database conversation into the full API response object.
 func conversationToResponse(conv database.Conversation) map[string]interface{} {
+	messageItems := make([]interface{}, 0, len(conv.Messages))
+	for _, msg := range conv.Messages {
+		messageItems = append(messageItems, messageToResponse(msg))
+	}
+
 	resp := map[string]interface{}{
 		"id":       conv.ID,
 		"isGroup":  conv.IsGroup,
 		"members":  usersToResponse(conv.Members),
-		"messages": []interface{}{},
+		"messages": messageItems,
 	}
 
 	// Add optional fields only when present.
@@ -36,17 +41,7 @@ func conversationToResponse(conv database.Conversation) map[string]interface{} {
 		resp["photo"] = conv.Photo
 	}
 
-	//TO-DO empty array for messages
 	return resp
-}
-
-// usersToResponse applies the same conversion to every conversation member
-func usersToResponse(users []database.User) []map[string]interface{} {
-	items := make([]map[string]interface{}, 0, len(users))
-	for _, user := range users {
-		items = append(items, userToResponse(user))
-	}
-	return items
 }
 
 func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
