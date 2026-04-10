@@ -8,6 +8,7 @@ import (
 	"git.sapienzaapps.it/fantasticcoffee/fantastic-coffee-decaffeinated/service/database"
 )
 
+// writeJSON standardizes JSON responses for all handlers
 func writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
@@ -19,6 +20,7 @@ func writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	_ = json.NewEncoder(w).Encode(data)
 }
 
+// getBearerToken extracts the user identifier stored in the Authorization header
 func getBearerToken(r *http.Request) (string, bool) {
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 	if authHeader == "" {
@@ -38,12 +40,14 @@ func getBearerToken(r *http.Request) (string, bool) {
 	return token, true
 }
 
+// userToResponse converts the internal database model into the public API shape
 func userToResponse(user database.User) map[string]interface{} {
 	resp := map[string]interface{}{
 		"id":       user.ID,
 		"username": user.Username,
 	}
 
+	// Only include optional fields when they actually contain data
 	if user.Photo != "" {
 		resp["photo"] = user.Photo
 	}

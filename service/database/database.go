@@ -34,14 +34,22 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-
-	"github.com/gofrs/uuid"
 )
 
+// User element
 type User struct {
 	ID       string
 	Username string
 	Photo    string
+}
+
+// Conversation element, containing Users, ID, group boolean and a photo
+type Conversation struct {
+	ID      string
+	IsGroup bool
+	Name    string
+	Photo   string
+	Members []User
 }
 
 // AppDatabase is the high level interface for the DB
@@ -51,6 +59,11 @@ type AppDatabase interface {
 	CreateUser(username string) (User, error)
 	GetUserByUsername(username string) (User, error)
 	GetUserByID(id string) (User, error)
+	ListUsers(usernameFilter string) ([]User, error)
+	UpdateUserName(id string, newUsername string) (User, error)
+	UpdateUserPhoto(id string, photo string) (User, error)
+
+	CreateConversation(currentUserID string, memberIDs []string, isGroup bool, name string, photo string) (Conversation, error)
 }
 
 type appdbimpl struct {
@@ -82,6 +95,45 @@ func New(db *sql.DB) (AppDatabase, error) {
 		return nil, fmt.Errorf("error checking database structure: %w", err)
 	}
 
+	// Create the conversations table only once, the first time the app starts on an empty DB
+	var conversationsTableName string
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='conversations';`).Scan(&conversationsTableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `
+		CREATE TABLE conversations (
+			id TEXT NOT NULL PRIMARY KEY,
+			is_group INTEGER NOT NULL,
+			name TEXT NOT NULL DEFAULT '',
+			photo TEXT NOT NULL DEFAULT ''
+		);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating conversations table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error checking conversations table: %w", err)
+	}
+
+	// Many-to-many relation between conversations and users
+	var membersTableName string
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='conversation_members';`).Scan(&membersTableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `
+		CREATE TABLE conversation_members (
+			conversation_id TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			PRIMARY KEY (conversation_id, user_id),
+			FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating conversation_members table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error checking conversation_members table: %w", err)
+	}
+
 	return &appdbimpl{
 		c: db,
 	}, nil
@@ -89,54 +141,4 @@ func New(db *sql.DB) (AppDatabase, error) {
 
 func (db *appdbimpl) Ping() error {
 	return db.c.Ping()
-}
-
-func (db *appdbimpl) CreateUser(username string) (User, error) {
-	userID := "user_" + uuid.Must(uuid.NewV4()).String()
-
-	_, err := db.c.Exec(
-		`INSERT INTO users (id, username, photo) VALUES (?, ?, ?)`,
-		userID,
-		username,
-		"",
-	)
-	if err != nil {
-		return User{}, fmt.Errorf("error creating user: %w", err)
-	}
-
-	return User{
-		ID:       userID,
-		Username: username,
-		Photo:    "",
-	}, nil
-}
-
-func (db *appdbimpl) GetUserByUsername(username string) (User, error) {
-	var user User
-
-	err := db.c.QueryRow(
-		`SELECT id, username, photo FROM users WHERE username = ?`,
-		username,
-	).Scan(&user.ID, &user.Username, &user.Photo)
-
-	if err != nil {
-		return User{}, err
-	}
-
-	return user, nil
-}
-
-func (db *appdbimpl) GetUserByID(id string) (User, error) {
-	var user User
-
-	err := db.c.QueryRow(
-		`SELECT id, username, photo FROM users WHERE id = ?`,
-		id,
-	).Scan(&user.ID, &user.Username, &user.Photo)
-
-	if err != nil {
-		return User{}, err
-	}
-
-	return user, nil
 }
