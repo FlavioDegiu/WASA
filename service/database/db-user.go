@@ -160,3 +160,14 @@ func (db *appdbimpl) userBelongsToConversation(conversationID string, userID str
 
 	return count > 0, nil
 }
+
+// Returns true if the given user can access the given message
+// because they belong to the conversation that owns it.
+func (db *appdbimpl) userCanAccessMessage(messageID string, userID string) (bool, error) {
+	conversationID, err := db.getConversationIDByMessageID(messageID)
+	if err != nil {
+		return false, err
+	}
+
+	return db.userBelongsToConversation(conversationID, userID)
+}

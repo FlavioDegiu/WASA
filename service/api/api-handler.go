@@ -22,6 +22,9 @@ func (rt *_router) Handler() http.Handler {
 	rt.router.GET("/conversations/:conversationId", rt.wrap(rt.getConversation))
 
 	rt.router.POST("/conversations/:conversationId/messages", rt.wrap(rt.sendMessage))
+	rt.router.PUT("/messages/:messageId/read", rt.wrap(rt.markMessageAsRead))
+	rt.router.DELETE("/messages/:messageId", rt.wrap(rt.deleteMessage))
+	rt.router.POST("/messages/:messageId/comments", rt.wrap(rt.commentMessage))
 
 	// Special routes
 	rt.router.GET("/liveness", rt.liveness)

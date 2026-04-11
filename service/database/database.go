@@ -65,6 +65,19 @@ type Message struct {
 	ForwardedFromMessageID string
 	CreatedAt              string
 	Deleted                bool
+	DeliveredToAll         bool
+	ReadByAll              bool
+	Comments               []Comment
+}
+
+// Comment represents a reaction/comment attached to a message.
+type Comment struct {
+	ID             string
+	MessageID      string
+	AuthorID       string
+	AuthorUsername string
+	Content        string
+	CreatedAt      string
 }
 
 // AppDatabase is the high level interface for the DB
@@ -84,6 +97,11 @@ type AppDatabase interface {
 
 	CreateMessage(conversationID string, senderID string, messageType string, content string, replyToMessageID string) (Message, error)
 	ListMessagesByConversationForUser(conversationID string, userID string) ([]Message, error)
+	MarkMessageAsRead(messageID string, userID string) error
+	IsMessageReadByAll(messageID string) (bool, error)
+	DeleteMessage(messageID string, userID string) error
+	CreateComment(messageID string, authorID string, content string) (Comment, error)
+	ListCommentsByMessageID(messageID string) ([]Comment, error)
 }
 
 type appdbimpl struct {
@@ -177,6 +195,47 @@ func New(db *sql.DB) (AppDatabase, error) {
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("error checking messages table: %w", err)
+	}
+
+	var messageReadsTableName string
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='message_reads';`).Scan(&messageReadsTableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `
+		CREATE TABLE message_reads (
+			message_id TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			read_at TEXT NOT NULL,
+			PRIMARY KEY (message_id, user_id),
+			FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating message_reads table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error checking message_reads table: %w", err)
+	}
+
+	var commentsTableName string
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='comments';`).Scan(&commentsTableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `
+		CREATE TABLE comments (
+			id TEXT NOT NULL PRIMARY KEY,
+			message_id TEXT NOT NULL,
+			author_id TEXT NOT NULL,
+			content TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+			FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
+		);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating comments table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error checking comments table: %w", err)
 	}
 
 	return &appdbimpl{
