@@ -100,8 +100,10 @@ type AppDatabase interface {
 	MarkMessageAsRead(messageID string, userID string) error
 	IsMessageReadByAll(messageID string) (bool, error)
 	DeleteMessage(messageID string, userID string) error
+
 	CreateComment(messageID string, authorID string, content string) (Comment, error)
 	ListCommentsByMessageID(messageID string) ([]Comment, error)
+	DeleteComment(messageID string, commentID string, userID string) error
 }
 
 type appdbimpl struct {

@@ -9,8 +9,11 @@ import (
 	"github.com/gofrs/uuid"
 )
 
-// ErrMessageNotOwned is returned when a user tries to delete a message they did not send.
+// ErrMessageNotOwned is returned when a user tries to delete a message they did not send
 var ErrMessageNotOwned = errors.New("message does not belong to the authenticated user")
+
+// ErrCommentNotOwned is returned when a user tries to delete a comment that they did not create
+var ErrCommentNotOwned = errors.New("comment does not belong to the authenticated user")
 
 // Creates a new message inside a conversation if the sender belongs to it.
 func (db *appdbimpl) CreateMessage(conversationID string, senderID string, messageType string, content string, replyToMessageID string) (Message, error) {
@@ -75,9 +78,9 @@ func (db *appdbimpl) CreateMessage(conversationID string, senderID string, messa
 	return msg, nil
 }
 
-// Returns all messages of a conversation if the given user belongs to it.
+// Returns all messages of a conversation if the given user belongs to it
 func (db *appdbimpl) ListMessagesByConversationForUser(conversationID string, userID string) ([]Message, error) {
-	// Do not expose messages from conversations the user does not belong to.
+	// Do not expose messages from conversations the user does not belong to
 	belongs, err := db.userBelongsToConversation(conversationID, userID)
 	if err != nil {
 		return nil, err
@@ -354,4 +357,48 @@ func (db *appdbimpl) ListCommentsByMessageID(messageID string) ([]Comment, error
 	}
 
 	return comments, nil
+}
+
+// Deletes a comment only if it belongs to the given author
+// and is attached to the given message.
+func (db *appdbimpl) DeleteComment(messageID string, commentID string, userID string) error {
+	var authorID string
+
+	// Load the author of the comment and verify that the comment
+	// belongs to the given message.
+	err := db.c.QueryRow(
+		`SELECT author_id
+		 FROM comments
+		 WHERE id = ? AND message_id = ?`,
+		commentID,
+		messageID,
+	).Scan(&authorID)
+	if err != nil {
+		return err
+	}
+
+	// Only the original author can delete the comment.
+	if authorID != userID {
+		return ErrCommentNotOwned
+	}
+
+	// Remove the comment row from the database.
+	result, err := db.c.Exec(
+		`DELETE FROM comments WHERE id = ? AND message_id = ?`,
+		commentID,
+		messageID,
+	)
+	if err != nil {
+		return fmt.Errorf("error deleting comment: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("error checking deleted comment rows: %w", err)
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }

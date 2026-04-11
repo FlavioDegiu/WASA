@@ -289,3 +289,60 @@ func (rt *_router) commentMessage(w http.ResponseWriter, r *http.Request, ps htt
 
 	writeJSON(w, http.StatusCreated, commentToResponse(comment))
 }
+
+// Removes one of the authenticated user's comments from a message.
+func (rt *_router) uncommentMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	// Authenticate the user from the Bearer token.
+	userID, ok := getBearerToken(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, errorResponse{
+			Message: "missing or invalid Authorization header",
+		})
+		return
+	}
+
+	// Read both identifiers from the URL path.
+	messageID := ps.ByName("messageId")
+	if messageID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Message: "missing message identifier",
+		})
+		return
+	}
+
+	commentID := ps.ByName("commentId")
+	if commentID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Message: "missing comment identifier",
+		})
+		return
+	}
+
+	// Try to delete the comment.
+	err := rt.db.DeleteComment(messageID, commentID, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, errorResponse{
+				Message: "comment not found",
+			})
+			return
+		}
+
+		// Only the original author can remove their comment.
+		if errors.Is(err, database.ErrCommentNotOwned) {
+			writeJSON(w, http.StatusForbidden, errorResponse{
+				Message: "only the comment author can remove it",
+			})
+			return
+		}
+
+		ctx.Logger.WithError(err).Error("cannot delete comment")
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Message: "internal server error",
+		})
+		return
+	}
+
+	// On success, this endpoint returns 204 No Content.
+	w.WriteHeader(http.StatusNoContent)
+}
