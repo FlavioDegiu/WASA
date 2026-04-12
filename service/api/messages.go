@@ -263,10 +263,10 @@ func (rt *_router) commentMessage(w http.ResponseWriter, r *http.Request, ps htt
 
 	req.Content = strings.TrimSpace(req.Content)
 
-	// For this project, a comment is exactly one emoji/non-empty reaction string.
-	if req.Content == "" {
+	// Comment is exactly one emoji
+	if !isSingleEmoji(req.Content) {
 		writeJSON(w, http.StatusBadRequest, errorResponse{
-			Message: "comment content must be a non-empty string",
+			Message: "comment must contain exactly one emoji",
 		})
 		return
 	}
