@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -13,6 +14,14 @@ import (
 
 type addToGroupRequest struct {
 	UserID string `json:"userId"`
+}
+
+type setGroupNameRequest struct {
+	Name string `json:"name"`
+}
+
+type setGroupPhotoRequest struct {
+	Photo string `json:"photo"`
 }
 
 // Adds a user to a group conversation.
@@ -149,4 +158,150 @@ func (rt *_router) leaveGroup(w http.ResponseWriter, r *http.Request, ps httprou
 
 	// On success, this endpoint returns 204 No Content.
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Updates the name of a group conversation.
+func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	// Authenticate the requester from the Bearer token.
+	requesterID, ok := getBearerToken(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, errorResponse{
+			Message: "missing or invalid Authorization header",
+		})
+		return
+	}
+
+	// Read the group ID from the URL path.
+	groupID := ps.ByName("groupId")
+	if groupID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Message: "missing group identifier",
+		})
+		return
+	}
+
+	// Decode the request body.
+	var req setGroupNameRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot decode set-group-name request body")
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Message: "invalid request body",
+		})
+		return
+	}
+
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Message: "group name must be a non-empty string",
+		})
+		return
+	}
+
+	// Ask the database layer to update the group name.
+	conv, err := rt.db.SetGroupName(groupID, requesterID, req.Name)
+	if err != nil {
+		switch {
+		case errors.Is(err, database.ErrNotGroupMember):
+			writeJSON(w, http.StatusForbidden, errorResponse{
+				Message: "access denied",
+			})
+			return
+
+		case errors.Is(err, database.ErrConversationNotGroup):
+			writeJSON(w, http.StatusBadRequest, errorResponse{
+				Message: "target conversation is not a group",
+			})
+			return
+
+		case errors.Is(err, sql.ErrNoRows):
+			writeJSON(w, http.StatusNotFound, errorResponse{
+				Message: "group not found",
+			})
+			return
+
+		default:
+			ctx.Logger.WithError(err).Error("cannot update group name")
+			writeJSON(w, http.StatusInternalServerError, errorResponse{
+				Message: "internal server error",
+			})
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, conversationToResponse(conv))
+}
+
+// Updates the photo of a group conversation.
+func (rt *_router) setGroupPhoto(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	// Authenticate the requester from the Bearer token.
+	requesterID, ok := getBearerToken(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, errorResponse{
+			Message: "missing or invalid Authorization header",
+		})
+		return
+	}
+
+	// Read the group ID from the URL path.
+	groupID := ps.ByName("groupId")
+	if groupID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Message: "missing group identifier",
+		})
+		return
+	}
+
+	// Decode the request body.
+	var req setGroupPhotoRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot decode set-group-photo request body")
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Message: "invalid request body",
+		})
+		return
+	}
+
+	req.Photo = strings.TrimSpace(req.Photo)
+	if req.Photo == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Message: "group photo must be a non-empty string",
+		})
+		return
+	}
+
+	// Ask the database layer to update the group photo.
+	conv, err := rt.db.SetGroupPhoto(groupID, requesterID, req.Photo)
+	if err != nil {
+		switch {
+		case errors.Is(err, database.ErrNotGroupMember):
+			writeJSON(w, http.StatusForbidden, errorResponse{
+				Message: "access denied",
+			})
+			return
+
+		case errors.Is(err, database.ErrConversationNotGroup):
+			writeJSON(w, http.StatusBadRequest, errorResponse{
+				Message: "target conversation is not a group",
+			})
+			return
+
+		case errors.Is(err, sql.ErrNoRows):
+			writeJSON(w, http.StatusNotFound, errorResponse{
+				Message: "group not found",
+			})
+			return
+
+		default:
+			ctx.Logger.WithError(err).Error("cannot update group photo")
+			writeJSON(w, http.StatusInternalServerError, errorResponse{
+				Message: "internal server error",
+			})
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, conversationToResponse(conv))
 }

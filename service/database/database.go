@@ -102,6 +102,8 @@ type AppDatabase interface {
 	GetConversationByIDForUser(conversationID string, userID string) (Conversation, error)
 	AddUserToGroup(groupID string, requesterID string, userIDToAdd string) (Conversation, error)
 	LeaveGroup(groupID string, userID string) error
+	SetGroupName(groupID string, requesterID string, newName string) (Conversation, error)
+	SetGroupPhoto(groupID string, requesterID string, newPhoto string) (Conversation, error)
 
 	CreateMessage(conversationID string, senderID string, messageType string, content string, replyToMessageID string) (Message, error)
 	ListMessagesByConversationForUser(conversationID string, userID string) ([]Message, error)

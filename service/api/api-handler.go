@@ -22,6 +22,8 @@ func (rt *_router) Handler() http.Handler {
 	rt.router.GET("/conversations/:conversationId", rt.wrap(rt.getConversation))
 	rt.router.POST("/groups/:groupId/members", rt.wrap(rt.addToGroup))
 	rt.router.DELETE("/groups/:groupId/members/me", rt.wrap(rt.leaveGroup))
+	rt.router.PUT("/groups/:groupId/name", rt.wrap(rt.setGroupName))
+	rt.router.PUT("/groups/:groupId/photo", rt.wrap(rt.setGroupPhoto))
 
 	rt.router.POST("/conversations/:conversationId/messages", rt.wrap(rt.sendMessage))
 	rt.router.PUT("/messages/:messageId/read", rt.wrap(rt.markMessageAsRead))

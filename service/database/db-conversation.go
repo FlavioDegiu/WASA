@@ -280,3 +280,89 @@ func (db *appdbimpl) LeaveGroup(groupID string, userID string) error {
 
 	return nil
 }
+
+// Updates the name of a group conversation if the requester belongs to it.
+func (db *appdbimpl) SetGroupName(groupID string, requesterID string, newName string) (Conversation, error) {
+	// Load the conversation only if the requester already belongs to it.
+	conv, err := db.GetConversationByIDForUser(groupID, requesterID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Conversation{}, ErrNotGroupMember
+		}
+		return Conversation{}, err
+	}
+
+	// The target conversation must actually be a group.
+	if !conv.IsGroup {
+		return Conversation{}, ErrConversationNotGroup
+	}
+
+	// Update the group name.
+	result, err := db.c.Exec(
+		`UPDATE conversations SET name = ? WHERE id = ?`,
+		newName,
+		groupID,
+	)
+	if err != nil {
+		return Conversation{}, fmt.Errorf("error updating group name: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return Conversation{}, fmt.Errorf("error checking updated group rows: %w", err)
+	}
+	if rowsAffected == 0 {
+		return Conversation{}, sql.ErrNoRows
+	}
+
+	// Return the updated conversation as visible to the requester.
+	updatedConv, err := db.GetConversationByIDForUser(groupID, requesterID)
+	if err != nil {
+		return Conversation{}, fmt.Errorf("error loading updated group: %w", err)
+	}
+
+	return updatedConv, nil
+}
+
+// Updates the photo of a group conversation if the requester belongs to it.
+func (db *appdbimpl) SetGroupPhoto(groupID string, requesterID string, newPhoto string) (Conversation, error) {
+	// Load the conversation only if the requester already belongs to it.
+	conv, err := db.GetConversationByIDForUser(groupID, requesterID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Conversation{}, ErrNotGroupMember
+		}
+		return Conversation{}, err
+	}
+
+	// The target conversation must actually be a group.
+	if !conv.IsGroup {
+		return Conversation{}, ErrConversationNotGroup
+	}
+
+	// Update the group photo.
+	result, err := db.c.Exec(
+		`UPDATE conversations SET photo = ? WHERE id = ?`,
+		newPhoto,
+		groupID,
+	)
+	if err != nil {
+		return Conversation{}, fmt.Errorf("error updating group photo: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return Conversation{}, fmt.Errorf("error checking updated group rows: %w", err)
+	}
+	if rowsAffected == 0 {
+		return Conversation{}, sql.ErrNoRows
+	}
+
+	// Return the updated conversation as visible to the requester.
+	updatedConv, err := db.GetConversationByIDForUser(groupID, requesterID)
+	if err != nil {
+		return Conversation{}, fmt.Errorf("error loading updated group: %w", err)
+	}
+
+	return updatedConv, nil
+}
