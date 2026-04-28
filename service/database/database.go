@@ -39,6 +39,7 @@ import (
 var ErrGroupNotFound = errors.New("group not found (or requester is not a member of the group)")
 var ErrUserNotFound = errors.New("user not found")
 var ErrUserAlreadyInGroup = errors.New("user already belongs to the group")
+var ErrNotGroupMember = errors.New("requester is not a member of the group")
 var ErrConversationNotGroup = errors.New("target conversation is not a group")
 
 // User element
@@ -100,6 +101,7 @@ type AppDatabase interface {
 	ListConversationsByUser(userID string) ([]Conversation, error)
 	GetConversationByIDForUser(conversationID string, userID string) (Conversation, error)
 	AddUserToGroup(groupID string, requesterID string, userIDToAdd string) (Conversation, error)
+	LeaveGroup(groupID string, userID string) error
 
 	CreateMessage(conversationID string, senderID string, messageType string, content string, replyToMessageID string) (Message, error)
 	ListMessagesByConversationForUser(conversationID string, userID string) ([]Message, error)

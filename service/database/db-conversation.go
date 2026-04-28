@@ -243,3 +243,40 @@ func (db *appdbimpl) AddUserToGroup(groupID string, requesterID string, userIDTo
 
 	return updatedConv, nil
 }
+
+// Removes the authenticated user from a group conversation.
+func (db *appdbimpl) LeaveGroup(groupID string, userID string) error {
+	// Load the conversation only if the user currently belongs to it.
+	conv, err := db.GetConversationByIDForUser(groupID, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotGroupMember
+		}
+		return err
+	}
+
+	// The target conversation must actually be a group.
+	if !conv.IsGroup {
+		return ErrConversationNotGroup
+	}
+
+	// Remove the authenticated user from the group membership table.
+	result, err := db.c.Exec(
+		`DELETE FROM conversation_members WHERE conversation_id = ? AND user_id = ?`,
+		groupID,
+		userID,
+	)
+	if err != nil {
+		return fmt.Errorf("error leaving group: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("error checking removed group member rows: %w", err)
+	}
+	if rowsAffected == 0 {
+		return ErrNotGroupMember
+	}
+
+	return nil
+}

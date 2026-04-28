@@ -101,3 +101,52 @@ func (rt *_router) addToGroup(w http.ResponseWriter, r *http.Request, ps httprou
 
 	writeJSON(w, http.StatusOK, conversationToResponse(conv))
 }
+
+// Removes the authenticated user from a group conversation.
+func (rt *_router) leaveGroup(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	// Authenticate the user from the Bearer token.
+	userID, ok := getBearerToken(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, errorResponse{
+			Message: "missing or invalid Authorization header",
+		})
+		return
+	}
+
+	// Read the group ID from the URL path.
+	groupID := ps.ByName("groupId")
+	if groupID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Message: "missing group identifier",
+		})
+		return
+	}
+
+	// Ask the database layer to remove the authenticated user from the group.
+	err := rt.db.LeaveGroup(groupID, userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, database.ErrNotGroupMember):
+			writeJSON(w, http.StatusForbidden, errorResponse{
+				Message: "access denied",
+			})
+			return
+
+		case errors.Is(err, database.ErrConversationNotGroup):
+			writeJSON(w, http.StatusBadRequest, errorResponse{
+				Message: "target conversation is not a group",
+			})
+			return
+
+		default:
+			ctx.Logger.WithError(err).Error("cannot leave group")
+			writeJSON(w, http.StatusInternalServerError, errorResponse{
+				Message: "internal server error",
+			})
+			return
+		}
+	}
+
+	// On success, this endpoint returns 204 No Content.
+	w.WriteHeader(http.StatusNoContent)
+}
