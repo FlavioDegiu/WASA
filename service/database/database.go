@@ -41,6 +41,8 @@ var ErrUserNotFound = errors.New("user not found")
 var ErrUserAlreadyInGroup = errors.New("user already belongs to the group")
 var ErrNotGroupMember = errors.New("requester is not a member of the group")
 var ErrConversationNotGroup = errors.New("target conversation is not a group")
+var ErrSourceMessageNotFound = errors.New("source message not found")
+var ErrDestinationConversationNotFound = errors.New("destination conversation not found")
 
 // User element
 type User struct {
@@ -110,6 +112,7 @@ type AppDatabase interface {
 	MarkMessageAsRead(messageID string, userID string) error
 	IsMessageReadByAll(messageID string) (bool, error)
 	DeleteMessage(messageID string, userID string) error
+	ForwardMessage(messageID string, senderID string, destinationConversationID string) (Message, error)
 
 	CreateComment(messageID string, authorID string, content string) (Comment, error)
 	ListCommentsByMessageID(messageID string) ([]Comment, error)

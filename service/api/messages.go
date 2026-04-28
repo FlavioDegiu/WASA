@@ -22,6 +22,10 @@ type commentMessageRequest struct {
 	Content string `json:"content"`
 }
 
+type forwardMessageRequest struct {
+	ConversationID string `json:"conversationId"`
+}
+
 // Converts one database message into the API response object.
 func messageToResponse(msg database.Message) map[string]interface{} {
 
@@ -345,4 +349,71 @@ func (rt *_router) uncommentMessage(w http.ResponseWriter, r *http.Request, ps h
 
 	// On success, this endpoint returns 204 No Content.
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Forwards an existing message into another conversation.
+func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	// Authenticate the user from the Bearer token.
+	userID, ok := getBearerToken(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, errorResponse{
+			Message: "missing or invalid Authorization header",
+		})
+		return
+	}
+
+	// Read the source message ID from the URL path.
+	messageID := ps.ByName("messageId")
+	if messageID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Message: "missing message identifier",
+		})
+		return
+	}
+
+	// Decode the request body.
+	var req forwardMessageRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot decode forward-message request body")
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Message: "invalid request body",
+		})
+		return
+	}
+
+	req.ConversationID = strings.TrimSpace(req.ConversationID)
+	if req.ConversationID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Message: "conversationId must be a non-empty string",
+		})
+		return
+	}
+
+	// Ask the database layer to create the forwarded message.
+	msg, err := rt.db.ForwardMessage(messageID, userID, req.ConversationID)
+	if err != nil {
+		switch {
+		case errors.Is(err, database.ErrSourceMessageNotFound):
+			writeJSON(w, http.StatusNotFound, errorResponse{
+				Message: "message or destination conversation not found",
+			})
+			return
+
+		case errors.Is(err, database.ErrDestinationConversationNotFound):
+			writeJSON(w, http.StatusNotFound, errorResponse{
+				Message: "message or destination conversation not found",
+			})
+			return
+
+		default:
+			ctx.Logger.WithError(err).Error("cannot forward message")
+			writeJSON(w, http.StatusInternalServerError, errorResponse{
+				Message: "internal server error",
+			})
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusCreated, messageToResponse(msg))
 }

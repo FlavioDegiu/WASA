@@ -15,9 +15,64 @@ var ErrMessageNotOwned = errors.New("message does not belong to the authenticate
 // ErrCommentNotOwned is returned when a user tries to delete a comment that they did not create
 var ErrCommentNotOwned = errors.New("comment does not belong to the authenticated user")
 
-// Creates a new message inside a conversation if the sender belongs to it.
+// Creates a new message inside a conversation if the sender belongs to it
 func (db *appdbimpl) CreateMessage(conversationID string, senderID string, messageType string, content string, replyToMessageID string) (Message, error) {
-	// First, verify that the sender belongs to the conversation.
+	return db.createMessageWithForward(conversationID, senderID, messageType, content, replyToMessageID, "")
+}
+
+// Returns one message by ID with sender username included.
+func (db *appdbimpl) getMessageByID(messageID string) (Message, error) {
+	var msg Message
+
+	err := db.c.QueryRow(
+		`SELECT m.id, m.conversation_id, m.sender_id, u.username, m.type, m.content,
+		        m.reply_to_message_id, m.forwarded_from_message_id, m.created_at, m.deleted
+		 FROM messages m
+		 INNER JOIN users u ON u.id = m.sender_id
+		 WHERE m.id = ?`,
+		messageID,
+	).Scan(
+		&msg.ID,
+		&msg.ConversationID,
+		&msg.SenderID,
+		&msg.SenderUsername,
+		&msg.Type,
+		&msg.Content,
+		&msg.ReplyToMessageID,
+		&msg.ForwardedFromMessageID,
+		&msg.CreatedAt,
+		&msg.Deleted,
+	)
+	if err != nil {
+		return Message{}, err
+	}
+
+	// Compute derived status fields.
+	msg.DeliveredToAll = false
+
+	msg.ReadByAll, err = db.IsMessageReadByAll(msg.ID)
+	if err != nil {
+		return Message{}, fmt.Errorf("error computing message read status: %w", err)
+	}
+
+	msg.Comments, err = db.ListCommentsByMessageID(msg.ID)
+	if err != nil {
+		return Message{}, fmt.Errorf("error loading message comments: %w", err)
+	}
+
+	return msg, nil
+}
+
+// Creates a new message row, optionally linking it to a forwarded source message.
+func (db *appdbimpl) createMessageWithForward(
+	conversationID string,
+	senderID string,
+	messageType string,
+	content string,
+	replyToMessageID string,
+	forwardedFromMessageID string,
+) (Message, error) {
+	// The sender must belong to the destination conversation.
 	belongs, err := db.userBelongsToConversation(conversationID, senderID)
 	if err != nil {
 		return Message{}, err
@@ -39,7 +94,7 @@ func (db *appdbimpl) CreateMessage(conversationID string, senderID string, messa
 		messageType,
 		content,
 		replyToMessageID,
-		"",
+		forwardedFromMessageID,
 		createdAt,
 		0,
 	)
@@ -47,33 +102,10 @@ func (db *appdbimpl) CreateMessage(conversationID string, senderID string, messa
 		return Message{}, fmt.Errorf("error creating message: %w", err)
 	}
 
-	var msg Message
-	err = db.c.QueryRow(
-		`SELECT m.id, m.conversation_id, m.sender_id, u.username, m.type, m.content,
-		        m.reply_to_message_id, m.forwarded_from_message_id, m.created_at, m.deleted
-		 FROM messages m
-		 INNER JOIN users u ON u.id = m.sender_id
-		 WHERE m.id = ?`,
-		messageID,
-	).Scan(
-		&msg.ID,
-		&msg.ConversationID,
-		&msg.SenderID,
-		&msg.SenderUsername,
-		&msg.Type,
-		&msg.Content,
-		&msg.ReplyToMessageID,
-		&msg.ForwardedFromMessageID,
-		&msg.CreatedAt,
-		&msg.Deleted,
-	)
+	msg, err := db.getMessageByID(messageID)
 	if err != nil {
 		return Message{}, fmt.Errorf("error loading created message: %w", err)
 	}
-
-	msg.DeliveredToAll = false
-	msg.ReadByAll = false
-	msg.Comments = []Comment{}
 
 	return msg, nil
 }
@@ -401,4 +433,56 @@ func (db *appdbimpl) DeleteComment(messageID string, commentID string, userID st
 	}
 
 	return nil
+}
+
+// Forwards an existing message into another conversation if the user
+// can access the source message and belongs to the destination conversation.
+func (db *appdbimpl) ForwardMessage(messageID string, senderID string, destinationConversationID string) (Message, error) {
+	// The user must be allowed to see the source message.
+	canAccessSource, err := db.userCanAccessMessage(messageID, senderID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Message{}, ErrSourceMessageNotFound
+		}
+		return Message{}, err
+	}
+	if !canAccessSource {
+		return Message{}, ErrSourceMessageNotFound
+	}
+
+	// The user must belong to the destination conversation too.
+	belongsToDestination, err := db.userBelongsToConversation(destinationConversationID, senderID)
+	if err != nil {
+		return Message{}, err
+	}
+	if !belongsToDestination {
+		return Message{}, ErrDestinationConversationNotFound
+	}
+
+	// Load the source message so we can copy its visible payload.
+	sourceMsg, err := db.getMessageByID(messageID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Message{}, ErrSourceMessageNotFound
+		}
+		return Message{}, err
+	}
+
+	// Create a new message in the destination conversation, linked to the source.
+	forwardedMsg, err := db.createMessageWithForward(
+		destinationConversationID,
+		senderID,
+		sourceMsg.Type,
+		sourceMsg.Content,
+		"",
+		sourceMsg.ID,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Message{}, ErrDestinationConversationNotFound
+		}
+		return Message{}, err
+	}
+
+	return forwardedMsg, nil
 }
