@@ -20,6 +20,7 @@ func (rt *_router) Handler() http.Handler {
 	rt.router.POST("/conversations", rt.wrap(rt.createConversation))
 	rt.router.GET("/conversations", rt.wrap(rt.getMyConversations))
 	rt.router.GET("/conversations/:conversationId", rt.wrap(rt.getConversation))
+	rt.router.POST("/groups/:groupId/members", rt.wrap(rt.addToGroup))
 
 	rt.router.POST("/conversations/:conversationId/messages", rt.wrap(rt.sendMessage))
 	rt.router.PUT("/messages/:messageId/read", rt.wrap(rt.markMessageAsRead))

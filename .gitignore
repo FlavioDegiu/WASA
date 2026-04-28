@@ -14,3 +14,28 @@ docker-compose.log
 
 .vscode/*
 !.vscode/extensions.json
+
+# Go build artifacts
+webapi
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Frontend dependencies / builds
+node_modules/
+dist/
+webui/dist/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store

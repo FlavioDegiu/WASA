@@ -1,6 +1,8 @@
 package database
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/gofrs/uuid"
@@ -187,4 +189,57 @@ func (db *appdbimpl) GetConversationByIDForUser(conversationID string, userID st
 	conv.Messages = messages
 
 	return conv, nil
+}
+
+// Adds a user to a group conversation if the requester already belongs to it.
+func (db *appdbimpl) AddUserToGroup(groupID string, requesterID string, userIDToAdd string) (Conversation, error) {
+	// Load the conversation only if the requester already belongs to it.
+	conv, err := db.GetConversationByIDForUser(groupID, requesterID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Conversation{}, ErrGroupNotFound
+		}
+		return Conversation{}, err
+	}
+
+	// The target conversation must be a group.
+	if !conv.IsGroup {
+		return Conversation{}, ErrConversationNotGroup
+	}
+
+	// The user to add must exist.
+	_, err = db.GetUserByID(userIDToAdd)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Conversation{}, ErrUserNotFound
+		}
+		return Conversation{}, err
+	}
+
+	// The user must not already be in the group.
+	userAlreadyInside, err := db.userBelongsToConversation(groupID, userIDToAdd)
+	if err != nil {
+		return Conversation{}, err
+	}
+	if userAlreadyInside {
+		return Conversation{}, ErrUserAlreadyInGroup
+	}
+
+	// Add the new member to the group.
+	_, err = db.c.Exec(
+		`INSERT INTO conversation_members (conversation_id, user_id) VALUES (?, ?)`,
+		groupID,
+		userIDToAdd,
+	)
+	if err != nil {
+		return Conversation{}, fmt.Errorf("error adding user to group: %w", err)
+	}
+
+	// Return the updated conversation as visible to the requester.
+	updatedConv, err := db.GetConversationByIDForUser(groupID, requesterID)
+	if err != nil {
+		return Conversation{}, fmt.Errorf("error loading updated group: %w", err)
+	}
+
+	return updatedConv, nil
 }
