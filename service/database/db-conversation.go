@@ -111,10 +111,14 @@ func (db *appdbimpl) getConversationMembers(conversationID string) ([]User, erro
 func (db *appdbimpl) ListConversationsByUser(userID string) ([]Conversation, error) {
 	rows, err := db.c.Query(
 		`SELECT c.id, c.is_group, c.name, c.photo
-		 FROM conversations c
-		 INNER JOIN conversation_members cm ON cm.conversation_id = c.id
-		 WHERE cm.user_id = ?
-		 ORDER BY c.id ASC`,
+		FROM conversations c
+		INNER JOIN conversation_members cm ON cm.conversation_id = c.id
+		WHERE cm.user_id = ?
+		ORDER BY (
+			SELECT MAX(m.created_at)
+			FROM messages m
+			WHERE m.conversation_id = c.id
+		) DESC, c.id ASC`,
 		userID,
 	)
 	if err != nil {
@@ -141,6 +145,21 @@ func (db *appdbimpl) ListConversationsByUser(userID string) ([]Conversation, err
 			return nil, fmt.Errorf("error loading conversation members: %w", err)
 		}
 		conv.Members = members
+
+		// Load the latest message, if any.
+		lastMessage, err := db.getLatestMessageByConversationID(conv.ID)
+		if err != nil {
+			return nil, fmt.Errorf("error loading latest conversation message: %w", err)
+		}
+		conv.LastMessage = lastMessage
+
+		// The conversation last activity is the latest message timestamp if available.
+		// Otherwise, leave it empty for now.
+		if lastMessage != nil {
+			conv.LastActivityAt = lastMessage.CreatedAt
+		} else {
+			conv.LastActivityAt = ""
+		}
 
 		conversations = append(conversations, conv)
 	}

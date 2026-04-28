@@ -133,36 +133,60 @@ func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps
 // Converts a database conversation into the smaller summary object used by GET /conversations.
 func conversationSummaryToResponse(conv database.Conversation, currentUserID string) map[string]interface{} {
 	title := conv.Name
+	photo := conv.Photo
 
-	// For direct conversations, the title should be the other user's username.
+	// For direct conversations, show the other user's username and photo.
 	if !conv.IsGroup {
 		for _, member := range conv.Members {
 			if member.ID != currentUserID {
 				title = member.Username
+				photo = member.Photo
 				break
 			}
 		}
 	}
 
-	resp := map[string]interface{}{
-		"id":        conv.ID,
-		"isGroup":   conv.IsGroup,
-		"title":     title,
-		"updatedAt": "",
-	}
-
-	// Add photo only if present.
-	if conv.Photo != "" {
-		resp["photo"] = conv.Photo
-	}
-
-	// For now we return a minimal preview placeholder.
-	// Later, when messages exist, we will replace this with the latest message preview.
-	resp["lastMessage"] = map[string]interface{}{
+	// Build a default empty preview for conversations with no messages yet.
+	lastMessage := map[string]interface{}{
 		"type":      "text",
 		"snippet":   "",
 		"senderId":  "",
 		"createdAt": "",
+	}
+
+	// If there is a latest message, build a real preview from it.
+	if conv.LastMessage != nil {
+		snippet := conv.LastMessage.Content
+
+		// Deleted messages get a placeholder preview.
+		if conv.LastMessage.Deleted {
+			snippet = "[deleted message]"
+		}
+
+		// For image and gif messages, keep the preview simple.
+		if conv.LastMessage.Type == "image" || conv.LastMessage.Type == "gif" {
+			snippet = ""
+		}
+
+		lastMessage = map[string]interface{}{
+			"type":      conv.LastMessage.Type,
+			"snippet":   snippet,
+			"senderId":  conv.LastMessage.SenderID,
+			"createdAt": conv.LastMessage.CreatedAt,
+		}
+	}
+
+	resp := map[string]interface{}{
+		"id":          conv.ID,
+		"isGroup":     conv.IsGroup,
+		"title":       title,
+		"updatedAt":   conv.LastActivityAt,
+		"lastMessage": lastMessage,
+	}
+
+	// Add photo only if present.
+	if photo != "" {
+		resp["photo"] = photo
 	}
 
 	return resp

@@ -486,3 +486,51 @@ func (db *appdbimpl) ForwardMessage(messageID string, senderID string, destinati
 
 	return forwardedMsg, nil
 }
+
+// Returns the latest message of a conversation, or nil if the conversation has no messages yet.
+func (db *appdbimpl) getLatestMessageByConversationID(conversationID string) (*Message, error) {
+	var msg Message
+
+	err := db.c.QueryRow(
+		`SELECT m.id, m.conversation_id, m.sender_id, u.username, m.type, m.content,
+		        m.reply_to_message_id, m.forwarded_from_message_id, m.created_at, m.deleted
+		 FROM messages m
+		 INNER JOIN users u ON u.id = m.sender_id
+		 WHERE m.conversation_id = ?
+		 ORDER BY m.created_at DESC
+		 LIMIT 1`,
+		conversationID,
+	).Scan(
+		&msg.ID,
+		&msg.ConversationID,
+		&msg.SenderID,
+		&msg.SenderUsername,
+		&msg.Type,
+		&msg.Content,
+		&msg.ReplyToMessageID,
+		&msg.ForwardedFromMessageID,
+		&msg.CreatedAt,
+		&msg.Deleted,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error loading latest message: %w", err)
+	}
+
+	// Fill derived fields so the message is consistent with the rest of the API.
+	msg.DeliveredToAll = false
+
+	msg.ReadByAll, err = db.IsMessageReadByAll(msg.ID)
+	if err != nil {
+		return nil, fmt.Errorf("error computing latest message read status: %w", err)
+	}
+
+	msg.Comments, err = db.ListCommentsByMessageID(msg.ID)
+	if err != nil {
+		return nil, fmt.Errorf("error loading latest message comments: %w", err)
+	}
+
+	return &msg, nil
+}

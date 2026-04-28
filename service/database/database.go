@@ -53,12 +53,14 @@ type User struct {
 
 // Conversation element, containing Users, ID, group boolean and a photo
 type Conversation struct {
-	ID       string
-	IsGroup  bool
-	Name     string
-	Photo    string
-	Members  []User
-	Messages []Message
+	ID             string
+	IsGroup        bool
+	Name           string
+	Photo          string
+	Members        []User
+	Messages       []Message
+	LastMessage    *Message
+	LastActivityAt string
 }
 
 // Message represents a message stored in the database.
