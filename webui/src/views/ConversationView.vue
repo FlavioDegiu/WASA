@@ -39,10 +39,11 @@
           v-for="message in conversation.messages"
           :key="message.id"
           class="card mb-2"
+          :class="isMyMessage(message) ? 'border-primary' : 'border-light'"
         >
           <div class="card-body">
             <div class="small text-muted mb-1">
-              {{ message.senderUsername }} • {{ message.createdAt }}
+              {{ isMyMessage(message) ? "You" : message.senderUsername }} • {{ message.createdAt }}
             </div>
             <div>{{ message.content }}</div>
           </div>
@@ -85,6 +86,7 @@ export default {
       sending: false,
       errorMessage: "",
       newMessage: "",
+      currentUserId: localStorage.getItem("token") || "",
     };
   },
   async mounted() {
@@ -131,6 +133,10 @@ export default {
       } finally {
         this.sending = false;
       }
+    },
+    // Returns true if the message was sent by the currently logged-in user.
+    isMyMessage(message) {
+      return message.senderId === this.currentUserId;
     },
   },
 };
