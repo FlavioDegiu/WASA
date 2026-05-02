@@ -42,12 +42,12 @@
           :class="isMyMessage(message) ? 'border-primary' : 'border-light'"
         >
           <div class="card-body">
+            
             <div class="d-flex justify-content-between align-items-center mb-1">
               <div class="small text-muted">
                 {{ isMyMessage(message) ? "You" : message.senderUsername }} • {{ message.createdAt }}
               </div>
 
-              <!-- Only the sender can delete their own message -->
               <button
                 v-if="isMyMessage(message) && !message.deleted"
                 class="btn btn-sm btn-outline-danger"
@@ -59,6 +59,37 @@
 
             <div :class="message.deleted ? 'text-muted fst-italic' : ''">
               {{ getVisibleMessageContent(message) }}
+            </div>
+
+            <div class="mt-2">
+              <button
+                class="btn btn-sm btn-outline-secondary"
+                @click="addComment(message.id, '😀')"
+                :disabled="message.deleted"
+              >
+                😀
+              </button>
+            </div>
+
+            <div v-if="message.comments && message.comments.length > 0" class="mt-2">
+              <div
+                v-for="comment in message.comments"
+                :key="comment.id"
+                class="d-inline-flex align-items-center border rounded-pill px-2 py-1 me-2 mb-2 small bg-light"
+              >
+                <span class="me-2">
+                  {{ comment.content }} {{ comment.authorUsername }}
+                </span>
+
+                <button
+                  v-if="comment.authorId === currentUserId"
+                  class="btn btn-sm btn-link text-danger p-0"
+                  @click="deleteComment(message.id, comment.id)"
+                  title="Remove reaction"
+                >
+                  ×
+                </button>
+              </div>
             </div>
 
           </div>
@@ -214,6 +245,48 @@ export default {
           this.errorMessage = e.response.data.message;
         } else {
           this.errorMessage = "Cannot delete message.";
+        }
+      }
+    },
+
+    // Adds a simple reaction/comment to a message, then reloads the conversation.
+    async addComment(messageId, content) {
+      if (!messageId || !content) return;
+
+      this.errorMessage = "";
+
+      try {
+        await api.post(`/messages/${messageId}/comments`, {
+          content,
+        });
+
+        // Reload the conversation so the new comment appears immediately.
+        await this.loadConversation();
+      } catch (e) {
+        if (e.response && e.response.data && e.response.data.message) {
+          this.errorMessage = e.response.data.message;
+        } else {
+          this.errorMessage = "Cannot add reaction.";
+        }
+      }
+    },
+
+    // Deletes one of the current user's comments from a message, then reloads the conversation.
+    async deleteComment(messageId, commentId) {
+      if (!messageId || !commentId) return;
+
+      this.errorMessage = "";
+
+      try {
+        await api.delete(`/messages/${messageId}/comments/${commentId}`);
+
+        // Reload the conversation so the removed comment disappears from the UI.
+        await this.loadConversation();
+      } catch (e) {
+        if (e.response && e.response.data && e.response.data.message) {
+          this.errorMessage = e.response.data.message;
+        } else {
+          this.errorMessage = "Cannot remove reaction.";
         }
       }
     },
