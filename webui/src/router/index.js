@@ -4,6 +4,7 @@ import LoginView from "../views/LoginView.vue";
 import ConversationsView from "../views/ConversationsView.vue";
 import ConversationView from "../views/ConversationView.vue";
 import ProfileView from "../views/ProfileView.vue";
+import NewConversationView from "../views/NewConversationView.vue";
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -33,6 +34,11 @@ const router = createRouter({
       path: "/profile",
       name: "profile",
       component: ProfileView,
+    },
+    {
+    path: "/new-conversation",
+    name: "new-conversation",
+    component: NewConversationView,
     },
   ],
 });
