@@ -42,10 +42,25 @@
           :class="isMyMessage(message) ? 'border-primary' : 'border-light'"
         >
           <div class="card-body">
-            <div class="small text-muted mb-1">
-              {{ isMyMessage(message) ? "You" : message.senderUsername }} • {{ message.createdAt }}
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <div class="small text-muted">
+                {{ isMyMessage(message) ? "You" : message.senderUsername }} • {{ message.createdAt }}
+              </div>
+
+              <!-- Only the sender can delete their own message -->
+              <button
+                v-if="isMyMessage(message) && !message.deleted"
+                class="btn btn-sm btn-outline-danger"
+                @click="deleteMessage(message.id)"
+              >
+                Delete
+              </button>
             </div>
-            <div>{{ message.content }}</div>
+
+            <div :class="message.deleted ? 'text-muted fst-italic' : ''">
+              {{ getVisibleMessageContent(message) }}
+            </div>
+
           </div>
         </div>
       </div>
@@ -94,7 +109,18 @@ export default {
   },
   methods: {
     
+
+    // Returns the text that should be shown for a message.
+    // Deleted messages keep their original content in the database, but the UI hides it from the user
+    getVisibleMessageContent(message) {
+      if (message.deleted) {
+        return "[deleted message]";
+      }
+
+      return message.content;
+    },
     
+
     async loadConversation() {
       this.loading = true;
       this.errorMessage = "";
@@ -165,6 +191,30 @@ export default {
       } catch (e) {
         // Do not block the page if read tracking fails This is a secondary action, so just log it for debugging.
         console.error("Cannot mark messages as read:", e);
+      }
+    },
+
+
+    // Deletes one of the current user's messages, then reloads the conversation.
+    async deleteMessage(messageId) {
+      if (!messageId) return;
+
+      const confirmed = window.confirm("Do you want to delete this message?");
+      if (!confirmed) return;
+
+      this.errorMessage = "";
+
+      try {
+        await api.delete(`/messages/${messageId}`);
+
+        // Reload the conversation so the UI reflects the deleted state.
+        await this.loadConversation();
+      } catch (e) {
+        if (e.response && e.response.data && e.response.data.message) {
+          this.errorMessage = e.response.data.message;
+        } else {
+          this.errorMessage = "Cannot delete message.";
+        }
       }
     },
   },
