@@ -93,6 +93,8 @@ export default {
     await this.loadConversation();
   },
   methods: {
+    
+    
     async loadConversation() {
       this.loading = true;
       this.errorMessage = "";
@@ -100,6 +102,12 @@ export default {
       try {
         const response = await api.get(`/conversations/${this.conversationId}`);
         this.conversation = response.data;
+
+        // After loading the conversation, mark all incoming messages as read.
+        await this.markMessagesAsRead();
+
+        const refreshedResponse = await api.get(`/conversations/${this.conversationId}`);
+        this.conversation = refreshedResponse.data;
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;
@@ -110,6 +118,8 @@ export default {
         this.loading = false;
       }
     },
+    
+    
     async sendMessage() {
       if (!this.newMessage) return;
 
@@ -134,9 +144,28 @@ export default {
         this.sending = false;
       }
     },
+    
+    
     // Returns true if the message was sent by the currently logged-in user.
     isMyMessage(message) {
       return message.senderId === this.currentUserId;
+    },
+    
+    
+    // Marks all messages from other users as read. Calling this more than once is safe
+    async markMessagesAsRead() {
+      if (!this.conversation || !this.conversation.messages) return;
+
+      try {
+        const requests = this.conversation.messages
+          .filter((message) => !this.isMyMessage(message))
+          .map((message) => api.put(`/messages/${message.id}/read`));
+
+        await Promise.all(requests);
+      } catch (e) {
+        // Do not block the page if read tracking fails This is a secondary action, so just log it for debugging.
+        console.error("Cannot mark messages as read:", e);
+      }
     },
   },
 };
