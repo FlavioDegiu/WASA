@@ -15,6 +15,28 @@
       <h1 class="h3 mb-3">
         {{ conversation.name || "Conversation" }}
       </h1>
+      
+      <!-- Group management section -->
+      <div v-if="isGroupConversation()" class="card mb-4">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Group Settings</h2>
+
+          <form class="mb-3" @submit.prevent="updateGroupName">
+            <label class="form-label">Group name</label>
+            <div class="input-group">
+              <input
+                v-model.trim="groupNameInput"
+                type="text"
+                class="form-control"
+                placeholder="Enter group name"
+              />
+              <button class="btn btn-outline-primary" type="submit">
+                Update Name
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
 
       <div class="mb-4">
         <h2 class="h5">Members</h2>
@@ -133,6 +155,8 @@ export default {
       errorMessage: "",
       newMessage: "",
       currentUserId: localStorage.getItem("token") || "",
+      groupNameInput: "",
+      groupPhotoInput: "",
     };
   },
   async mounted() {
@@ -165,6 +189,9 @@ export default {
 
         const refreshedResponse = await api.get(`/conversations/${this.conversationId}`);
         this.conversation = refreshedResponse.data;
+        // Keep the editable group fields in sync with the loaded conversation.
+        this.groupNameInput = this.conversation.name || "";
+        this.groupPhotoInput = this.conversation.photo || "";
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;
@@ -290,6 +317,40 @@ export default {
         }
       }
     },
+
+    // Returns true if the currently opened conversation is a group.
+    isGroupConversation() {
+      return this.conversation && this.conversation.isGroup;
+    },
+
+    // Updates the current group's name, then reloads the conversation.
+    async updateGroupName() {
+      if (!this.conversation || !this.conversation.id) return;
+
+      const newName = this.groupNameInput.trim();
+      if (!newName) {
+        this.errorMessage = "Group name must be a non-empty string.";
+        return;
+      }
+
+      this.errorMessage = "";
+
+      try {
+        await api.put(`/groups/${this.conversation.id}/name`, {
+          name: newName,
+        });
+
+        // Reload the conversation so the UI shows the updated name.
+        await this.loadConversation();
+      } catch (e) {
+        if (e.response && e.response.data && e.response.data.message) {
+          this.errorMessage = e.response.data.message;
+        } else {
+          this.errorMessage = "Cannot update group name.";
+        }
+      }
+    },
+
   },
 };
 </script>
