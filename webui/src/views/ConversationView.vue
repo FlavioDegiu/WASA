@@ -12,9 +12,14 @@
     <LoadingSpinner v-if="loading" />
 
     <div v-else-if="conversation">
-      <h1 class="h3 mb-3">
-        {{ conversation.name || "Conversation" }}
-      </h1>
+      <div class="mb-3">
+        <h1 class="h3 mb-1">
+          {{ getConversationTitle() }}
+        </h1>
+        <div class="text-muted">
+          {{ getConversationSubtitle() }}
+        </div>
+      </div>
       
       <!-- Group management section -->
       <div v-if="isGroupConversation()" class="card mb-4">
@@ -120,7 +125,7 @@
             
             <div class="d-flex justify-content-between align-items-center mb-1">
               <div class="small text-muted">
-                {{ isMyMessage(message) ? "You" : message.senderUsername }} • {{ message.createdAt }}
+                {{ isMyMessage(message) ? "You" : message.senderUsername }} • {{ formatDateTime(message.createdAt) }}
               </div>
 
               <button
@@ -257,6 +262,35 @@ export default {
       } finally {
         this.loading = false;
       }
+    },
+
+    // Returns the best title for the current conversation.
+    // For groups, use the group name.
+    // For direct conversations, use the other user's username.
+    getConversationTitle() {
+      if (!this.conversation) return "Conversation";
+
+      if (this.conversation.isGroup) {
+        return this.conversation.name || "Group";
+      }
+
+      const otherMember = (this.conversation.members || []).find(
+        (member) => member.id !== this.currentUserId
+      );
+
+      return otherMember ? otherMember.username : "Conversation";
+    },
+
+    // Returns a small subtitle for the conversation header.
+    getConversationSubtitle() {
+      if (!this.conversation) return "";
+
+      if (this.conversation.isGroup) {
+        const memberCount = (this.conversation.members || []).length;
+        return `${memberCount} member${memberCount === 1 ? "" : "s"}`;
+      }
+
+      return "Direct conversation";
     },
     
     
@@ -511,6 +545,16 @@ export default {
           this.errorMessage = "Cannot leave group.";
         }
       }
+    },
+
+    // Formats an ISO timestamp to be readable
+    formatDateTime(value) {
+      if (!value) return "";
+
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+
+      return date.toLocaleString();
     },
 
   },

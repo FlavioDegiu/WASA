@@ -9,6 +9,9 @@
         <button class="btn btn-outline-danger btn-sm" @click="logout">
           Logout
         </button>
+        <router-link to="/new-conversation" class="btn btn-primary btn-sm">
+          New Conversation
+        </router-link>
       </div>
     </div>
 
@@ -31,7 +34,7 @@
             </p>
           </div>
           <small class="text-muted">
-            {{ conversation.updatedAt || "" }}
+            {{ formatDateTime(conversation.updatedAt) }}
           </small>
         </div>
       </router-link>
@@ -65,6 +68,7 @@ export default {
     await this.loadConversations();
   },
   methods: {
+
     async loadConversations() {
       this.loading = true;
       this.errorMessage = "";
@@ -88,6 +92,7 @@ export default {
         this.loading = false;
       }
     },
+
     formatPreview(lastMessage) {
       if (!lastMessage) return "";
 
@@ -97,11 +102,24 @@ export default {
 
       return lastMessage.snippet;
     },
+
     logout() {
       localStorage.removeItem("token");
       localStorage.removeItem("username");
       this.$router.push("/");
     },
+
+    // Formats an ISO date string to be readable.
+    formatDateTime(value) {
+      if (!value) return "";
+
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+
+      return date.toLocaleString();
+    },
+
+
   },
 };
 </script>
