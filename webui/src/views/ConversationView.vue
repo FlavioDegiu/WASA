@@ -11,6 +11,8 @@
     <ErrorMsg v-if="errorMessage" :msg="errorMessage" />
     <LoadingSpinner v-if="loading" />
 
+
+
     <div v-else-if="conversation">
       <div class="mb-3">
         <h1 class="h3 mb-1">
@@ -20,7 +22,11 @@
           {{ getConversationSubtitle() }}
         </div>
       </div>
-      
+
+      <div v-if="conversation && conversation.photo" class="text-muted small mb-3">
+        Photo: {{ conversation.photo }}
+      </div>    
+
       <!-- Group management section -->
       <div v-if="isGroupConversation()" class="card mb-4">
         <div class="card-body">
@@ -183,8 +189,10 @@
             type="text"
             class="form-control"
             placeholder="Write a message..."
+            maxlength="4096"
           />
-          <button class="btn btn-primary" type="submit" :disabled="sending">
+
+          <button class="btn btn-primary" type="submit" :disabled="sending || !newMessage">
             Send
           </button>
         </div>
