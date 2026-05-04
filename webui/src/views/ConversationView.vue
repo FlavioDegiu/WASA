@@ -35,6 +35,59 @@
               </button>
             </div>
           </form>
+
+          <form @submit.prevent="updateGroupPhoto">
+            <label class="form-label">Group photo</label>
+            <div class="input-group">
+              <input
+                v-model.trim="groupPhotoInput"
+                type="text"
+                class="form-control"
+                placeholder="Enter group photo path"
+              />
+              <button class="btn btn-outline-primary" type="submit">
+                Update Photo
+              </button>
+            </div>
+          </form>
+
+          <div class="mb-3 text-muted small">
+            Current photo: {{ conversation.photo || "No photo" }}
+          </div>
+
+          <hr />
+          <div>
+            <label class="form-label">Add user to group</label>
+
+            <div v-if="availableUsers.length === 0" class="text-muted small mb-2">
+              No more users available to add.
+            </div>
+
+            <div v-else class="input-group">
+              <select v-model="selectedUserToAdd" class="form-select">
+                <option value="">Select a user</option>
+                <option
+                  v-for="user in availableUsers"
+                  :key="user.id"
+                  :value="user.id"
+                >
+                  {{ user.username }}
+                </option>
+              </select>
+
+              <button class="btn btn-outline-primary" type="button" @click="addUserToGroup">
+                Add User
+              </button>
+            </div>
+          </div>
+          
+          <hr />
+          <div class="d-flex justify-content-end">
+            <button class="btn btn-outline-danger" type="button" @click="leaveGroup">
+              Leave Group
+            </button>
+          </div>
+
         </div>
       </div>
 
@@ -157,6 +210,8 @@ export default {
       currentUserId: localStorage.getItem("token") || "",
       groupNameInput: "",
       groupPhotoInput: "",
+      availableUsers: [],
+      selectedUserToAdd: "",
     };
   },
   async mounted() {
@@ -192,6 +247,7 @@ export default {
         // Keep the editable group fields in sync with the loaded conversation.
         this.groupNameInput = this.conversation.name || "";
         this.groupPhotoInput = this.conversation.photo || "";
+        await this.loadAvailableUsersForGroup();
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;
@@ -347,6 +403,112 @@ export default {
           this.errorMessage = e.response.data.message;
         } else {
           this.errorMessage = "Cannot update group name.";
+        }
+      }
+    },
+
+    // Updates the current group's photo, then reloads the conversation.
+    async updateGroupPhoto() {
+      if (!this.conversation || !this.conversation.id) return;
+
+      const newPhoto = this.groupPhotoInput.trim();
+      if (!newPhoto) {
+        this.errorMessage = "Group photo must be a non-empty string.";
+        return;
+      }
+
+      this.errorMessage = "";
+
+      try {
+        await api.put(`/groups/${this.conversation.id}/photo`, {
+          photo: newPhoto,
+        });
+
+        // Reload the conversation so the UI shows the updated photo.
+        await this.loadConversation();
+      } catch (e) {
+        if (e.response && e.response.data && e.response.data.message) {
+          this.errorMessage = e.response.data.message;
+        } else {
+          this.errorMessage = "Cannot update group photo.";
+        }
+      }
+    },
+
+    // Loads all users that are not already members of the current group.
+    async loadAvailableUsersForGroup() {
+      if (!this.isGroupConversation()) {
+        this.availableUsers = [];
+        return;
+      }
+
+      try {
+        const response = await api.get("/users");
+        const allUsers = response.data.items || [];
+
+        // Build a set of user IDs that are already in the group.
+        const memberIds = new Set(
+          (this.conversation.members || []).map((member) => member.id)
+        );
+
+        // Keep only users that are not already part of the group.
+        this.availableUsers = allUsers.filter((user) => !memberIds.has(user.id));
+      } catch (e) {
+        console.error("Cannot load available users for group:", e);
+        this.availableUsers = [];
+      }
+    },
+
+    // Adds the selected user to the current group, then reloads the conversation.
+    async addUserToGroup() {
+      if (!this.conversation || !this.conversation.id) return;
+
+      const userId = this.selectedUserToAdd.trim();
+      if (!userId) {
+        this.errorMessage = "Select a user to add.";
+        return;
+      }
+
+      this.errorMessage = "";
+
+      try {
+        await api.post(`/groups/${this.conversation.id}/members`, {
+          userId,
+        });
+
+        // Clear the current selection.
+        this.selectedUserToAdd = "";
+
+        // Reload the conversation so the new member appears immediately.
+        await this.loadConversation();
+      } catch (e) {
+        if (e.response && e.response.data && e.response.data.message) {
+          this.errorMessage = e.response.data.message;
+        } else {
+          this.errorMessage = "Cannot add user to group.";
+        }
+      }
+    },
+
+    // Removes the current user from the group and redirects back to the conversations list.
+    async leaveGroup() {
+      if (!this.conversation || !this.conversation.id) return;
+
+      const confirmed = window.confirm("Do you want to leave this group?");
+      if (!confirmed) return;
+
+      this.errorMessage = "";
+
+      try {
+        await api.delete(`/groups/${this.conversation.id}/members/me`);
+
+        // After leaving the group, this user should no longer stay on its page.
+        this.$router.push("/conversations");
+      } catch (e) {
+        if (e.response && e.response.data && e.response.data.message) {
+          this.errorMessage = e.response.data.message;
+        } else {
+          this.errorMessage = "Cannot leave group.";
         }
       }
     },
