@@ -98,9 +98,9 @@ export default {
 
       if (lastMessage.type === "image") return "[image]";
       if (lastMessage.type === "gif") return "[gif]";
-      if (!lastMessage.snippet) return "";
+      if (!lastMessage.content) return "";
 
-      return lastMessage.snippet;
+      return lastMessage.content;
     },
 
     logout() {

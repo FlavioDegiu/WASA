@@ -149,28 +149,28 @@ func conversationSummaryToResponse(conv database.Conversation, currentUserID str
 	// Build a default empty preview for conversations with no messages yet.
 	lastMessage := map[string]interface{}{
 		"type":      "text",
-		"snippet":   "",
+		"content":   "",
 		"senderId":  "",
 		"createdAt": "",
 	}
 
 	// If there is a latest message, build a real preview from it.
 	if conv.LastMessage != nil {
-		snippet := conv.LastMessage.Content
+		content := conv.LastMessage.Content
 
 		// Deleted messages get a placeholder preview.
 		if conv.LastMessage.Deleted {
-			snippet = "[deleted message]"
+			content = "[deleted message]"
 		}
 
 		// For image and gif messages, keep the preview simple.
 		if conv.LastMessage.Type == "image" || conv.LastMessage.Type == "gif" {
-			snippet = ""
+			content = ""
 		}
 
 		lastMessage = map[string]interface{}{
 			"type":      conv.LastMessage.Type,
-			"snippet":   snippet,
+			"content":   content,
 			"senderId":  conv.LastMessage.SenderID,
 			"createdAt": conv.LastMessage.CreatedAt,
 		}
