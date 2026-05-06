@@ -225,10 +225,15 @@ export default {
       groupPhotoInput: "",
       availableUsers: [],
       selectedUserToAdd: "",
+      refreshIntervalId: null,
     };
   },
   async mounted() {
     await this.loadConversation();
+    this.startAutoRefresh();
+  },
+  beforeUnmount() {
+    this.stopAutoRefresh();
   },
   methods: {
     
@@ -244,22 +249,31 @@ export default {
     },
     
 
-    async loadConversation() {
-      this.loading = true;
+    // Loads the current conversation and refreshes read status.
+    async loadConversation(background = false) {
+      if (!background) {
+        this.loading = true;
+      }
+
       this.errorMessage = "";
 
       try {
+        // Load the current conversation and its messages.
         const response = await api.get(`/conversations/${this.conversationId}`);
         this.conversation = response.data;
 
-        // After loading the conversation, mark all incoming messages as read.
+        // Mark incoming messages as read.
         await this.markMessagesAsRead();
 
+        // Reload once so the UI shows updated read status and comments.
         const refreshedResponse = await api.get(`/conversations/${this.conversationId}`);
         this.conversation = refreshedResponse.data;
-        // Keep the editable group fields in sync with the loaded conversation.
+
+        // Keep editable group fields in sync with the loaded conversation.
         this.groupNameInput = this.conversation.name || "";
         this.groupPhotoInput = this.conversation.photo || "";
+
+        // Refresh the list of users that can still be added to this group.
         await this.loadAvailableUsersForGroup();
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
@@ -268,7 +282,9 @@ export default {
           this.errorMessage = "Cannot load conversation.";
         }
       } finally {
-        this.loading = false;
+        if (!background) {
+          this.loading = false;
+        }
       }
     },
 
@@ -307,6 +323,7 @@ export default {
 
       this.sending = true;
       this.errorMessage = "";
+      this.stopAutoRefresh();
 
       try {
         await api.post(`/conversations/${this.conversationId}/messages`, {
@@ -324,6 +341,7 @@ export default {
         }
       } finally {
         this.sending = false;
+        this.startAutoRefresh();
       }
     },
     
@@ -563,6 +581,25 @@ export default {
       if (Number.isNaN(date.getTime())) return value;
 
       return date.toLocaleString();
+    },
+
+    // Starts automatic refresh of the opened conversation.
+    startAutoRefresh() {
+      // Avoid duplicate timers.
+      this.stopAutoRefresh();
+
+      // Refresh every 3 seconds.
+      this.refreshIntervalId = setInterval(() => {
+        this.loadConversation(true);
+      }, 3000);
+    },
+
+    // Stops the automatic refresh timer if it exists.
+    stopAutoRefresh() {
+      if (this.refreshIntervalId) {
+        clearInterval(this.refreshIntervalId);
+        this.refreshIntervalId = null;
+      }
     },
 
   },

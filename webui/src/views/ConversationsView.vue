@@ -62,15 +62,28 @@ export default {
       conversations: [],
       loading: false,
       errorMessage: "",
+      refreshIntervalId: null,
     };
   },
+
   async mounted() {
     await this.loadConversations();
+    this.startAutoRefresh();
+  },
+  beforeUnmount() {
+    // Stop the timer when leaving the page,
+    // otherwise the interval would keep running in background.
+    this.stopAutoRefresh();
   },
   methods: {
 
-    async loadConversations() {
-      this.loading = true;
+    // Loads the authenticated user's conversations.
+    // When called in background mode, it refreshes data without showing loading.
+    async loadConversations(background = false) {
+      if (!background) {
+        this.loading = true;
+      }
+
       this.errorMessage = "";
 
       try {
@@ -89,7 +102,9 @@ export default {
           this.errorMessage = "Cannot load conversations.";
         }
       } finally {
-        this.loading = false;
+        if (!background) {
+          this.loading = false;
+        }
       }
     },
 
@@ -123,6 +138,25 @@ export default {
       if (Number.isNaN(date.getTime())) return value;
 
       return date.toLocaleString();
+    },
+
+    // Starts automatic refresh of the conversations list.
+    startAutoRefresh() {
+      // Avoid creating multiple intervals accidentally.
+      this.stopAutoRefresh();
+
+      // Refresh every 3 seconds.
+      this.refreshIntervalId = setInterval(() => {
+        this.loadConversations(true);
+      }, 3000);
+    },
+
+    // Stops the automatic refresh timer if it exists.
+    stopAutoRefresh() {
+      if (this.refreshIntervalId) {
+        clearInterval(this.refreshIntervalId);
+        this.refreshIntervalId = null;
+      }
     },
 
 
