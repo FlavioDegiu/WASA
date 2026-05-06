@@ -106,7 +106,7 @@ export default {
         return lastMessage.content;
       }
 
-      return lastMessage.content.slice(0, maxLength) + "...";
+      return lastMessage.content.slice(0, maxLength-3) + "...";
     },
 
     logout() {
