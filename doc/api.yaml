@@ -1032,7 +1032,7 @@ components:
         content:
           type: string
           minLength: 1
-          maxLength: 1024
+          maxLength: 40
           pattern: '^.*?$'
           description: a short version of the content of the last message
           example: "See you later"

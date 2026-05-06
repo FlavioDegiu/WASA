@@ -93,6 +93,7 @@ export default {
       }
     },
 
+    // Returns a short readable preview for the latest message in a conversation.
     formatPreview(lastMessage) {
       if (!lastMessage) return "";
 
@@ -100,7 +101,12 @@ export default {
       if (lastMessage.type === "gif") return "[gif]";
       if (!lastMessage.content) return "";
 
-      return lastMessage.content;
+      const maxLength = 40;
+      if (lastMessage.content.length <= maxLength) {
+        return lastMessage.content;
+      }
+
+      return lastMessage.content.slice(0, maxLength) + "...";
     },
 
     logout() {
