@@ -859,12 +859,14 @@ components:
           example: text
         content:
           type: string
+          pattern: '^.*?$'
           description: the content of the message
           minLength: 1
           maxLength: 4096
           example: Hello!
         replyToMessageId:
           type: string
+          pattern: '^.*?$'
           minLength: 1
           maxLength: 64
           description: the id of the message that this message is replying to. Null if this message does not reply to any other message
