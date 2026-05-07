@@ -381,6 +381,20 @@ func (db *appdbimpl) CreateComment(messageID string, authorID string, content st
 		return Comment{}, sql.ErrNoRows
 	}
 
+	// A user can add at most one reaction/comment to the same message.
+	var existingCount int
+	err = db.c.QueryRow(
+		`SELECT COUNT(*) FROM comments WHERE message_id = ? AND author_id = ?`,
+		messageID,
+		authorID,
+	).Scan(&existingCount)
+	if err != nil {
+		return Comment{}, fmt.Errorf("error checking existing comment: %w", err)
+	}
+	if existingCount > 0 {
+		return Comment{}, ErrUserAlreadyReacted
+	}
+
 	commentID := "comm_" + uuid.Must(uuid.NewV4()).String()
 	createdAt := time.Now().UTC().Format(time.RFC3339)
 

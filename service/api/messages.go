@@ -284,6 +284,13 @@ func (rt *_router) commentMessage(w http.ResponseWriter, r *http.Request, ps htt
 			return
 		}
 
+		if errors.Is(err, database.ErrUserAlreadyReacted) {
+			writeJSON(w, http.StatusConflict, errorResponse{
+				Message: "you already reacted to this message",
+			})
+			return
+		}
+
 		ctx.Logger.WithError(err).Error("cannot create comment")
 		writeJSON(w, http.StatusInternalServerError, errorResponse{
 			Message: "internal server error",

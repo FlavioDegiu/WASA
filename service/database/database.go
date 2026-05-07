@@ -43,6 +43,7 @@ var ErrNotGroupMember = errors.New("requester is not a member of the group")
 var ErrConversationNotGroup = errors.New("target conversation is not a group")
 var ErrSourceMessageNotFound = errors.New("source message not found")
 var ErrDestinationConversationNotFound = errors.New("destination conversation not found")
+var ErrUserAlreadyReacted = errors.New("user already reacted to this message")
 
 // User element
 type User struct {
@@ -266,6 +267,7 @@ func New(db *sql.DB) (AppDatabase, error) {
 			author_id TEXT NOT NULL,
 			content TEXT NOT NULL,
 			created_at TEXT NOT NULL,
+			UNIQUE (message_id, author_id),
 			FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
 			FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
 		);`
