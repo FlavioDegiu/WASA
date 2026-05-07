@@ -157,7 +157,7 @@
               <button
                 class="btn btn-sm btn-outline-secondary"
                 @click="addComment(message.id, '😀')"
-                :disabled="message.deleted"
+                :disabled="message.deleted || hasMyReaction(message)"
               >
                 😀
               </button>
@@ -624,6 +624,15 @@ export default {
       }
 
       return "";
+    },
+
+    // Returns true if the current user already reacted to this message.
+    hasMyReaction(message) {
+      if (!message.comments) return false;
+
+      return message.comments.some(
+        (comment) => comment.authorId === this.currentUserId
+      );
     },
 
   },
