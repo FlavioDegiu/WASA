@@ -140,13 +140,28 @@
                 </span>
               </div>
 
-              <button
-                v-if="isMyMessage(message) && !message.deleted"
-                class="btn btn-sm btn-outline-danger"
-                @click="deleteMessage(message.id)"
-              >
-                Delete
-              </button>
+              <div class="d-flex gap-2">
+                <button
+                  class="btn btn-sm btn-outline-secondary"
+                  @click="startForwarding(message.id)"
+                  :disabled="message.deleted"
+                >
+                  Forward
+                </button>
+
+                <button
+                  v-if="isMyMessage(message) && !message.deleted"
+                  class="btn btn-sm btn-outline-danger"
+                  @click="deleteMessage(message.id)"
+                >
+                  Delete
+                </button>
+              </div>
+
+            </div>
+
+            <div v-if="isForwardedMessage(message)" class="small text-muted mb-1">
+              <span class="badge text-bg-light border">Forwarded</span>
             </div>
 
             <div :class="message.deleted ? 'text-muted fst-italic' : ''">
@@ -180,6 +195,35 @@
                   title="Remove reaction"
                 >
                   ×
+                </button>
+              </div>
+            </div>
+
+            <div v-if="isForwardingThisMessage(message)" class="mt-3 border rounded p-3 bg-light">
+              <div class="mb-2 fw-semibold">Forward message</div>
+
+              <div v-if="availableForwardConversations.length === 0" class="text-muted small mb-2">
+                No available destination conversations.
+              </div>
+
+              <div v-else class="input-group">
+                <select v-model="selectedForwardConversationId" class="form-select">
+                  <option value="">Select destination</option>
+                  <option
+                    v-for="conv in availableForwardConversations"
+                    :key="conv.id"
+                    :value="conv.id"
+                  >
+                    {{ conv.title }}
+                  </option>
+                </select>
+
+                <button class="btn btn-outline-primary" type="button" @click="confirmForwardMessage">
+                  Confirm
+                </button>
+
+                <button class="btn btn-outline-secondary" type="button" @click="cancelForwarding">
+                  Cancel
                 </button>
               </div>
             </div>
@@ -232,6 +276,9 @@ export default {
       availableUsers: [],
       selectedUserToAdd: "",
       refreshIntervalId: null,
+      forwardingMessageId: "",
+      availableForwardConversations: [],
+      selectedForwardConversationId: "",
     };
   },
   async mounted() {
@@ -626,13 +673,85 @@ export default {
       return "";
     },
 
-    // Returns true if the current user already reacted to this message.
+    // Returns true if the current user already reacted to this message
     hasMyReaction(message) {
       if (!message.comments) return false;
 
       return message.comments.some(
         (comment) => comment.authorId === this.currentUserId
       );
+    },
+    
+    // Returns true if the message was created by forwarding another message
+    isForwardedMessage(message) {
+      return !!message.forwardedFromMessageId;
+    },
+
+    // Starts the forwarding flow for the selected message.
+    async startForwarding(messageId) {
+      this.errorMessage = "";
+      this.forwardingMessageId = messageId;
+      this.selectedForwardConversationId = "";
+
+      await this.loadAvailableForwardConversations();
+    },
+
+    // Cancels the current forwarding action.
+    cancelForwarding() {
+      this.forwardingMessageId = "";
+      this.selectedForwardConversationId = "";
+      this.availableForwardConversations = [];
+    },
+
+    // Loads all conversations that can be used as forwarding destinations, excluding the currently open one
+    async loadAvailableForwardConversations() {
+      try {
+        const response = await api.get("/conversations");
+        const items = response.data.items || [];
+
+        // Exclude the current conversation to keep the UI simpler.
+        this.availableForwardConversations = items.filter(
+          (conv) => conv.id !== this.conversationId
+        );
+      } catch (e) {
+        console.error("Cannot load forwarding destinations:", e);
+        this.availableForwardConversations = [];
+      }
+    },
+
+    // Forwards the selected message to the chosen destination conversation.
+    async confirmForwardMessage() {
+      if (!this.forwardingMessageId) return;
+
+      const destinationConversationId = this.selectedForwardConversationId.trim();
+      if (!destinationConversationId) {
+        this.errorMessage = "Select a destination conversation.";
+        return;
+      }
+
+      this.errorMessage = "";
+
+      try {
+        await api.post(`/messages/${this.forwardingMessageId}/forward`, {
+          conversationId: destinationConversationId,
+        });
+
+        // Clear forwarding state after success and redirect to chat
+        const destinationId = this.selectedForwardConversationId;
+        this.cancelForwarding();
+        this.$router.push(`/conversations/${destinationId}`);
+      } catch (e) {
+        if (e.response && e.response.data && e.response.data.message) {
+          this.errorMessage = e.response.data.message;
+        } else {
+          this.errorMessage = "Cannot forward message.";
+        }
+      }
+    },
+
+    // Returns true if this message is currently selected for forwarding
+    isForwardingThisMessage(message) {
+      return this.forwardingMessageId === message.id;
     },
 
   },
