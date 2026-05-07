@@ -113,6 +113,8 @@ type AppDatabase interface {
 	ListMessagesByConversationForUser(conversationID string, userID string) ([]Message, error)
 	MarkMessageAsRead(messageID string, userID string) error
 	IsMessageReadByAll(messageID string) (bool, error)
+	MarkConversationsAsDelivered(userID string) error
+	IsMessageDeliveredToAll(messageID string) (bool, error)
 	DeleteMessage(messageID string, userID string) error
 	ForwardMessage(messageID string, senderID string, destinationConversationID string) (Message, error)
 
@@ -232,6 +234,26 @@ func New(db *sql.DB) (AppDatabase, error) {
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("error checking message_reads table: %w", err)
+	}
+
+	var messageDeliveriesTableName string
+	err = db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='message_deliveries';`).Scan(&messageDeliveriesTableName)
+	if errors.Is(err, sql.ErrNoRows) {
+		sqlStmt := `
+		CREATE TABLE message_deliveries (
+			message_id TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			delivered_at TEXT NOT NULL,
+			PRIMARY KEY (message_id, user_id),
+			FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);`
+		_, err = db.Exec(sqlStmt)
+		if err != nil {
+			return nil, fmt.Errorf("error creating message_deliveries table: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("error checking message_deliveries table: %w", err)
 	}
 
 	var commentsTableName string

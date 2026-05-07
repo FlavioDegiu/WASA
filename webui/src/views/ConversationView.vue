@@ -131,7 +131,13 @@
             
             <div class="d-flex justify-content-between align-items-center mb-1">
               <div class="small text-muted">
-                {{ isMyMessage(message) ? "You" : message.senderUsername }} • {{ formatDateTime(message.createdAt) }}
+                {{ isMyMessage(message) ? "You" : message.senderUsername }}
+                •
+                {{ formatDateTime(message.createdAt) }}
+
+                <span v-if="getMessageCheckmarks(message)" class="ms-2 text-primary fw-semibold">
+                  {{ getMessageCheckmarks(message) }}
+                </span>
               </div>
 
               <button
@@ -600,6 +606,24 @@ export default {
         clearInterval(this.refreshIntervalId);
         this.refreshIntervalId = null;
       }
+    },
+
+    // Returns the checkmark string to show for one of the current user's messages.
+    getMessageCheckmarks(message) {
+      // Received messages must not show any checkmarks.
+      if (!this.isMyMessage(message)) {
+        return "";
+      }
+
+      if (message.status && message.status.readByAll) {
+        return "✓✓";
+      }
+
+      if (message.status && message.status.deliveredToAll) {
+        return "✓";
+      }
+
+      return "";
     },
 
   },

@@ -47,8 +47,10 @@ func (db *appdbimpl) getMessageByID(messageID string) (Message, error) {
 		return Message{}, err
 	}
 
-	// Compute derived status fields.
-	msg.DeliveredToAll = false
+	msg.DeliveredToAll, err = db.IsMessageDeliveredToAll(msg.ID)
+	if err != nil {
+		return Message{}, fmt.Errorf("error computing message delivery status: %w", err)
+	}
 
 	msg.ReadByAll, err = db.IsMessageReadByAll(msg.ID)
 	if err != nil {
@@ -153,8 +155,11 @@ func (db *appdbimpl) ListMessagesByConversationForUser(conversationID string, us
 			return nil, fmt.Errorf("error scanning message: %w", err)
 		}
 
-		// Delivery is not implemented yet, so keep it false for now.
-		msg.DeliveredToAll = false
+		// Compute whether all recipients have received this message in their conversation list.
+		msg.DeliveredToAll, err = db.IsMessageDeliveredToAll(msg.ID)
+		if err != nil {
+			return nil, fmt.Errorf("error computing message delivery status: %w", err)
+		}
 
 		// Compute whether all recipients have read this message.
 		msg.ReadByAll, err = db.IsMessageReadByAll(msg.ID)
@@ -264,6 +269,67 @@ func (db *appdbimpl) IsMessageReadByAll(messageID string) (bool, error) {
 	}
 
 	return recipientCount > 0 && readCount == recipientCount, nil
+}
+
+// Marks as delivered all messages that belong to conversations visible to the given user.
+func (db *appdbimpl) MarkConversationsAsDelivered(userID string) error {
+	deliveredAt := time.Now().UTC().Format(time.RFC3339)
+
+	_, err := db.c.Exec(
+		`INSERT OR IGNORE INTO message_deliveries (message_id, user_id, delivered_at)
+		 SELECT m.id, ?, ?
+		 FROM messages m
+		 INNER JOIN conversation_members cm ON cm.conversation_id = m.conversation_id
+		 WHERE cm.user_id = ?
+		   AND m.sender_id <> ?`,
+		userID,
+		deliveredAt,
+		userID,
+		userID,
+	)
+	if err != nil {
+		return fmt.Errorf("error marking conversations as delivered: %w", err)
+	}
+
+	return nil
+}
+
+// Returns true if every recipient of a message has received it in their conversation list.
+func (db *appdbimpl) IsMessageDeliveredToAll(messageID string) (bool, error) {
+	var conversationID string
+	var senderID string
+
+	err := db.c.QueryRow(
+		`SELECT conversation_id, sender_id FROM messages WHERE id = ?`,
+		messageID,
+	).Scan(&conversationID, &senderID)
+	if err != nil {
+		return false, err
+	}
+
+	var recipientCount int
+	err = db.c.QueryRow(
+		`SELECT COUNT(*) FROM conversation_members
+		 WHERE conversation_id = ? AND user_id <> ?`,
+		conversationID,
+		senderID,
+	).Scan(&recipientCount)
+	if err != nil {
+		return false, fmt.Errorf("error counting message recipients: %w", err)
+	}
+
+	var deliveredCount int
+	err = db.c.QueryRow(
+		`SELECT COUNT(*) FROM message_deliveries
+		 WHERE message_id = ? AND user_id <> ?`,
+		messageID,
+		senderID,
+	).Scan(&deliveredCount)
+	if err != nil {
+		return false, fmt.Errorf("error counting delivered recipients: %w", err)
+	}
+
+	return recipientCount > 0 && deliveredCount == recipientCount, nil
 }
 
 // Marks a message as deleted if it belongs to the given sender.

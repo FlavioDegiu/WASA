@@ -203,6 +203,16 @@ func (rt *_router) getMyConversations(w http.ResponseWriter, r *http.Request, ps
 		return
 	}
 
+	// Loading the conversation list means the user has received visible incoming messages.
+	err := rt.db.MarkConversationsAsDelivered(userID)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("cannot mark conversations as delivered")
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Message: "internal server error",
+		})
+		return
+	}
+
 	// Load all conversations for this user.
 	conversations, err := rt.db.ListConversationsByUser(userID)
 	if err != nil {
