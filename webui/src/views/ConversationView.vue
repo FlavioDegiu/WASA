@@ -202,13 +202,19 @@
             <div v-if="isForwardingThisMessage(message)" class="mt-3 border rounded p-3 bg-light">
               <div class="mb-2 fw-semibold">Forward message</div>
 
-              <div v-if="availableForwardConversations.length === 0" class="text-muted small mb-2">
-                No available destination conversations.
-              </div>
+              <div class="mb-3">
+                <label class="form-label">Choose an existing conversation</label>
 
-              <div v-else class="input-group">
-                <select v-model="selectedForwardConversationId" class="form-select">
-                  <option value="">Select destination</option>
+                <div v-if="availableForwardConversations.length === 0" class="text-muted small">
+                  No existing destination conversations available.
+                </div>
+
+                <select
+                  v-else
+                  v-model="selectedForwardConversationId"
+                  class="form-select"
+                >
+                  <option value="">Select conversation</option>
                   <option
                     v-for="conv in availableForwardConversations"
                     :key="conv.id"
@@ -217,7 +223,32 @@
                     {{ conv.title }}
                   </option>
                 </select>
+              </div>
 
+              <div class="mb-3">
+                <label class="form-label">Or forward to a user</label>
+
+                <div v-if="availableForwardUsers.length === 0" class="text-muted small">
+                  No users available.
+                </div>
+
+                <select
+                  v-else
+                  v-model="selectedForwardUserId"
+                  class="form-select"
+                >
+                  <option value="">Select user</option>
+                  <option
+                    v-for="user in availableForwardUsers"
+                    :key="user.id"
+                    :value="user.id"
+                  >
+                    {{ user.username }}
+                  </option>
+                </select>
+              </div>
+
+              <div class="d-flex gap-2">
                 <button class="btn btn-outline-primary" type="button" @click="confirmForwardMessage">
                   Confirm
                 </button>
@@ -279,8 +310,11 @@ export default {
       forwardingMessageId: "",
       availableForwardConversations: [],
       selectedForwardConversationId: "",
+      availableForwardUsers: [],
+      selectedForwardUserId: "",
     };
   },
+
   async mounted() {
     await this.loadConversation();
     this.startAutoRefresh();
@@ -288,9 +322,21 @@ export default {
   beforeUnmount() {
     this.stopAutoRefresh();
   },
-  methods: {
-    
 
+  watch: {
+    selectedForwardConversationId(newValue) {
+      if (newValue) {
+        this.selectedForwardUserId = "";
+      }
+    },
+    selectedForwardUserId(newValue) {
+      if (newValue) {
+        this.selectedForwardConversationId = "";
+      }
+    },
+  },
+
+  methods: {
     // Returns the text that should be shown for a message.
     // Deleted messages keep their original content in the database, but the UI hides it from the user
     getVisibleMessageContent(message) {
@@ -692,15 +738,21 @@ export default {
       this.errorMessage = "";
       this.forwardingMessageId = messageId;
       this.selectedForwardConversationId = "";
+      this.selectedForwardUserId = "";
 
-      await this.loadAvailableForwardConversations();
+      await Promise.all([
+        this.loadAvailableForwardConversations(),
+        this.loadAvailableForwardUsers(),
+      ]);
     },
 
     // Cancels the current forwarding action.
     cancelForwarding() {
       this.forwardingMessageId = "";
       this.selectedForwardConversationId = "";
+      this.selectedForwardUserId = "";
       this.availableForwardConversations = [];
+      this.availableForwardUsers = [];
     },
 
     // Loads all conversations that can be used as forwarding destinations, excluding the currently open one
@@ -719,27 +771,55 @@ export default {
       }
     },
 
-    // Forwards the selected message to the chosen destination conversation.
+    // Loads all users except the currently logged-in one. These users can be used as forwarding targets even if no direct conversation exists yet.
+    async loadAvailableForwardUsers() {
+      try {
+        const response = await api.get("/users");
+        const items = response.data.items || [];
+
+        this.availableForwardUsers = items.filter(
+          (user) => user.id !== this.currentUserId
+        );
+      } catch (e) {
+        console.error("Cannot load forwarding users:", e);
+        this.availableForwardUsers = [];
+      }
+    },
+
+    // Forwards the selected message to an existing conversation or to a user (creating a direct conversation first if needed).
     async confirmForwardMessage() {
       if (!this.forwardingMessageId) return;
-
-      const destinationConversationId = this.selectedForwardConversationId.trim();
-      if (!destinationConversationId) {
-        this.errorMessage = "Select a destination conversation.";
-        return;
-      }
 
       this.errorMessage = "";
 
       try {
+        let destinationConversationId = this.selectedForwardConversationId.trim();
+
+        // If no existing conversation was selected, try forwarding to a user.
+        if (!destinationConversationId) {
+          const selectedUserId = this.selectedForwardUserId.trim();
+
+          if (!selectedUserId) {
+            this.errorMessage = "Select a destination conversation or user.";
+            return;
+          }
+
+          // Create a direct conversation with that user first.
+          destinationConversationId = await this.createDirectConversationForForward(selectedUserId);
+        }
+
         await api.post(`/messages/${this.forwardingMessageId}/forward`, {
           conversationId: destinationConversationId,
         });
 
-        // Clear forwarding state after success and redirect to chat
-        const destinationId = this.selectedForwardConversationId;
+        // Keep the destination so we can optionally open it after forwarding.
+        const finalDestinationId = destinationConversationId;
+
+        // Clear forwarding state.
         this.cancelForwarding();
-        this.$router.push(`/conversations/${destinationId}`);
+
+        // Open the destination conversation so the forwarded message is immediately visible.
+        this.$router.push(`/conversations/${finalDestinationId}`);
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;
@@ -752,6 +832,16 @@ export default {
     // Returns true if this message is currently selected for forwarding
     isForwardingThisMessage(message) {
       return this.forwardingMessageId === message.id;
+    },
+
+    // Creates a direct conversation with the given user and returns its ID.
+    async createDirectConversationForForward(userId) {
+      const response = await api.post("/conversations", {
+        isGroup: false,
+        members: [userId],
+      });
+
+      return response.data.id;
     },
 
   },
