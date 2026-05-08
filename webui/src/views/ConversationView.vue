@@ -121,6 +121,7 @@
           No messages yet.
         </div>
 
+        <!-- messages -->
         <div
           v-for="message in conversation.messages"
           :key="message.id"
@@ -129,6 +130,7 @@
         >
           <div class="card-body">
             
+            <!-- message data (sender username and timestamp)-->
             <div class="d-flex justify-content-between align-items-center mb-1">
               <div class="small text-muted">
                 {{ isMyMessage(message) ? "You" : message.senderUsername }}
@@ -139,8 +141,17 @@
                   {{ getMessageCheckmarks(message) }}
                 </span>
               </div>
-
+              
+              <!-- buttons on the right off the message -->
               <div class="d-flex gap-2">
+                <button
+                  class="btn btn-sm btn-outline-secondary"
+                  @click="startReply(message)"
+                  :disabled="message.deleted"
+                >
+                  Reply
+                </button>
+                
                 <button
                   class="btn btn-sm btn-outline-secondary"
                   @click="startForwarding(message.id)"
@@ -160,14 +171,30 @@
 
             </div>
 
+            <!-- Forwarded marker -->
             <div v-if="isForwardedMessage(message)" class="small text-muted mb-1">
               <span class="badge text-bg-light border">Forwarded</span>
             </div>
 
+            <!-- this message is replying to ... text box -->
+            <div
+              v-if="getRepliedMessage(message)"
+              class="border-start border-3 ps-2 mb-2 small text-muted"
+            >
+              <div class="fw-semibold">
+                Replying to {{ getRepliedMessage(message).senderUsername }}
+              </div>
+              <div>
+                {{ getReplyPreviewContent(getRepliedMessage(message)) }}
+              </div>
+            </div>
+
+            <!-- message content on the left-->
             <div :class="message.deleted ? 'text-muted fst-italic' : ''">
               {{ getVisibleMessageContent(message) }}
             </div>
 
+            <!-- comments buttons below the mesasge -->
             <div class="mt-2">
               <button
                 class="btn btn-sm btn-outline-secondary"
@@ -178,6 +205,7 @@
               </button>
             </div>
 
+            <!-- display comments below comment buttons -->
             <div v-if="message.comments && message.comments.length > 0" class="mt-2">
               <div
                 v-for="comment in message.comments"
@@ -188,6 +216,7 @@
                   {{ comment.content }} {{ comment.authorUsername }}
                 </span>
 
+                <!-- button to delete my comment next to the comment -->
                 <button
                   v-if="comment.authorId === currentUserId"
                   class="btn btn-sm btn-link text-danger p-0"
@@ -263,8 +292,28 @@
         </div>
       </div>
 
+      <!-- Replying to message preview when writing a message -->
+      <div v-if="replyingToMessage" class="border rounded p-2 mb-2 bg-light">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="small fw-semibold">
+              Replying to {{ replyingToMessage.senderUsername }}
+            </div>
+            <div class="small text-muted">
+              {{ getReplyPreviewContent(replyingToMessage) }}
+            </div>
+          </div>
+
+          <!-- Cancel reply button -->
+          <button class="btn btn-sm btn-outline-secondary" type="button" @click="cancelReply">
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <!-- Send form -->
       <form @submit.prevent="sendMessage">
-        <div class="input-group">
+        <div class="input-group">          
           <input
             v-model.trim="newMessage"
             type="text"
@@ -273,6 +322,7 @@
             maxlength="4096"
           />
 
+          <!-- Send button -->
           <button class="btn btn-primary" type="submit" :disabled="sending || !newMessage">
             Send
           </button>
@@ -312,6 +362,7 @@ export default {
       selectedForwardConversationId: "",
       availableForwardUsers: [],
       selectedForwardUserId: "",
+      replyingToMessage: null,
     };
   },
 
@@ -428,19 +479,26 @@ export default {
         await api.post(`/conversations/${this.conversationId}/messages`, {
           type: "text",
           content: this.newMessage,
+          replyToMessageId: this.replyingToMessage ? this.replyingToMessage.id : "",
         });
 
         this.newMessage = "";
+        this.replyingToMessage = null;
         await this.loadConversation();
+
       } catch (e) {
+
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;
         } else {
           this.errorMessage = "Cannot send message.";
         }
+
       } finally {
+
         this.sending = false;
         this.startAutoRefresh();
+      
       }
     },
     
@@ -842,6 +900,44 @@ export default {
       });
 
       return response.data.id;
+    },
+
+    // Starts replying to the selected message.
+    startReply(message) {
+      this.replyingToMessage = message;
+    },
+
+    // Cancels the current reply.
+    cancelReply() {
+      this.replyingToMessage = null;
+    },
+
+    // Returns the original referenced message for a reply, if it exists in the loaded conversation.
+    getRepliedMessage(message) {
+      if (!message.replyToMessageId || !this.conversation || !this.conversation.messages) {
+        return null;
+      }
+
+      return this.conversation.messages.find(
+        (candidate) => candidate.id === message.replyToMessageId
+      ) || null;
+    },
+
+    // Returns the short preview text used in reply snippets.
+    getReplyPreviewContent(message) {
+      if (!message) return "";
+
+      if (message.type === "image") return "[image]";
+      if (message.type === "gif") return "[gif]";
+      if (message.deleted) return "[deleted message]";
+      if (!message.content) return "";
+
+      const maxLength = 30;
+      if (message.content.length <= maxLength) {
+        return message.content;
+      }
+
+      return message.content.slice(0, maxLength) + "...";
     },
 
   },
