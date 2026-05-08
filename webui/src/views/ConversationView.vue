@@ -189,6 +189,16 @@
               </div>
             </div>
 
+            <!-- Message image -->
+            <div v-if="message.type === 'image' && getImageMessageData(message)" class="mt-2">
+              <img
+                :src="getImageMessageData(message)"
+                alt="Sent image"
+                class="img-fluid rounded border"
+                style="max-height: 300px;"
+              />
+            </div>
+
             <!-- message content on the left-->
             <div :class="message.deleted ? 'text-muted fst-italic' : ''">
               {{ getVisibleMessageContent(message) }}
@@ -228,6 +238,7 @@
               </div>
             </div>
 
+            <!-- Message forwarding section -->
             <div v-if="isForwardingThisMessage(message)" class="mt-3 border rounded p-3 bg-light">
               <div class="mb-2 fw-semibold">Forward message</div>
 
@@ -310,6 +321,18 @@
           </button>
         </div>
       </div>
+      
+      <!-- Attach image button -->
+      <div class="mb-2">
+        <label class="form-label">Attach image</label>
+        <input
+          ref="imageInput"
+          type="file"
+          class="form-control"
+          accept="image/*"
+          @change="handleImageSelected"
+        />
+      </div>
 
       <!-- Send form -->
       <form @submit.prevent="sendMessage">
@@ -322,12 +345,36 @@
             maxlength="4096"
           />
 
+
+
           <!-- Send button -->
-          <button class="btn btn-primary" type="submit" :disabled="sending || !newMessage">
+          <button
+            class="btn btn-primary"
+            type="submit"
+            :disabled="sending || (!newMessage.trim() && !selectedImageFile)"
+          >
             Send
           </button>
         </div>
       </form>
+
+      <!-- Picked image show -->
+      <div v-if="selectedImagePreview" class="mb-3">
+        <div class="small text-muted mb-1">Selected image preview</div>
+        <img
+          :src="selectedImagePreview"
+          alt="Selected preview"
+          class="img-fluid rounded border"
+          style="max-height: 200px;"
+        />
+
+        <div class="mt-2">
+          <button class="btn btn-sm btn-outline-secondary" type="button" @click="clearSelectedImage">
+            Remove image
+          </button>
+        </div>
+      </div>
+
     </div>
   </div>
 </template>
@@ -363,6 +410,8 @@ export default {
       availableForwardUsers: [],
       selectedForwardUserId: "",
       replyingToMessage: null,
+      selectedImageFile: null,
+      selectedImagePreview: "",
     };
   },
 
@@ -393,6 +442,11 @@ export default {
     getVisibleMessageContent(message) {
       if (message.deleted) {
         return "[deleted message]";
+      }
+
+      if (message.type === "image") {
+        const parsed = this.parseImageMessageContent(message);
+        return parsed && parsed.text ? parsed.text : "";
       }
 
       return message.content;
@@ -468,37 +522,62 @@ export default {
     },
     
     
+    // Sends either a normal text message or an image message with optional caption.
     async sendMessage() {
-      if (!this.newMessage) return;
+      const trimmedText = this.newMessage.trim();
+
+      // Do not send empty messages if there is no selected image.
+      if (!trimmedText && !this.selectedImageFile) return;
 
       this.sending = true;
       this.errorMessage = "";
       this.stopAutoRefresh();
 
       try {
-        await api.post(`/conversations/${this.conversationId}/messages`, {
-          type: "text",
-          content: this.newMessage,
-          replyToMessageId: this.replyingToMessage ? this.replyingToMessage.id : "",
-        });
+        let payload;
 
+        if (this.selectedImageFile) {
+          // Read the image as base64 data URL and pack it together with the caption.
+          const imageData = await this.readSelectedImageAsDataUrl();
+
+          payload = {
+            type: "image",
+            content: JSON.stringify({
+              text: trimmedText,
+              imageData: imageData,
+            }),
+            replyToMessageId: this.replyingToMessage ? this.replyingToMessage.id : "",
+          };
+        } else {
+          payload = {
+            type: "text",
+            content: trimmedText,
+            replyToMessageId: this.replyingToMessage ? this.replyingToMessage.id : "",
+          };
+        }
+
+        await api.post(`/conversations/${this.conversationId}/messages`, payload);
+
+        // Reset composer state after success.
         this.newMessage = "";
         this.replyingToMessage = null;
+        this.clearSelectedImage();
+
+        // Also clear the native file input element if present.
+        if (this.$refs.imageInput) {
+          this.$refs.imageInput.value = "";
+        }
+
         await this.loadConversation();
-
       } catch (e) {
-
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;
         } else {
           this.errorMessage = "Cannot send message.";
         }
-
       } finally {
-
         this.sending = false;
         this.startAutoRefresh();
-      
       }
     },
     
@@ -924,6 +1003,7 @@ export default {
     },
 
     // Returns the short preview text used in reply snippets.
+    // Can't make this work. I'm going insane
     getReplyPreviewContent(message) {
       if (!message) return "";
 
@@ -933,11 +1013,88 @@ export default {
       if (!message.content) return "";
 
       const maxLength = 30;
-      if (message.content.length <= maxLength) {
-        return message.content;
+      
+      if (message.content.length <= maxLength - 8 && message.type === "image") { return `[image] ` + message.content}
+      if (message.content.length <= maxLength - 6 && message.type === "gif") { return `[gif] ` + message.content}
+      if (message.content.length <= maxLength && message.type !== "gif" && message.type != "image") { return message.content; }
+
+      if (message.type === "image") return `[image] ` + message.content.slice(0, maxLength - 11) + "...";
+      if (message.type === "gif") return `[gif] ` + message.content.slice(0, maxLength - 9) + "...";
+      return message.content.slice(0, maxLength - 3) + "...";
+    },
+
+    // Handles image file selection and stores a local preview.
+    handleImageSelected(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) {
+        this.selectedImageFile = null;
+        this.selectedImagePreview = "";
+        return;
       }
 
-      return message.content.slice(0, maxLength) + "...";
+      // Only allow image files.
+      if (!file.type.startsWith("image/")) {
+        this.errorMessage = "Please select a valid image file.";
+        this.selectedImageFile = null;
+        this.selectedImagePreview = "";
+        return;
+      }
+
+      this.errorMessage = "";
+      this.selectedImageFile = file;
+
+      // Build a local preview so the user can see what will be sent.
+      const reader = new FileReader();
+      reader.onload = () => {
+        this.selectedImagePreview = reader.result;
+      };
+      reader.readAsDataURL(file);
+    },
+
+    // Clears the currently selected image and resets the file input preview state.
+    clearSelectedImage() {
+      this.selectedImageFile = null;
+      this.selectedImagePreview = "";
+    },
+
+    // Converts the selected image file into a data URL string.
+    readSelectedImageAsDataUrl() {
+      return new Promise((resolve, reject) => {
+        if (!this.selectedImageFile) {
+          resolve("");
+          return;
+        }
+
+        const reader = new FileReader();
+
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error("Cannot read selected image file"));
+
+        reader.readAsDataURL(this.selectedImageFile);
+      });
+    },
+
+    // Safely parses the structured content of an image message.
+    parseImageMessageContent(message) {
+      if (!message || message.type !== "image" || !message.content) {
+        return null;
+      }
+
+      try {
+        return JSON.parse(message.content);
+      } catch (e) {
+        return null;
+      }
+    },
+
+    // Returns the image data URL for an image message, if available.
+    getImageMessageData(message) {
+      if (message.deleted || message.type !== "image") {
+        return "";
+      }
+
+      const parsed = this.parseImageMessageContent(message);
+      return parsed && parsed.imageData ? parsed.imageData : "";
     },
 
   },
