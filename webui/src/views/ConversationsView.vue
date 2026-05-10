@@ -27,12 +27,33 @@
         class="list-group-item list-group-item-action"
       >
         <div class="d-flex w-100 justify-content-between align-items-start">
-          <div>
-            <h5 class="mb-1">{{ conversation.title }}</h5>
-            <p class="mb-1 text-muted">
-              {{ formatPreview(conversation.lastMessage) }}
-            </p>
+          <div class="d-flex align-items-start gap-3">
+            <!-- Conversation photo -->
+            <div>
+              <img
+                v-if="hasPhoto(conversation.photo)"
+                :src="conversation.photo"
+                alt="Conversation"
+                class="rounded-circle border"
+                style="width: 48px; height: 48px; object-fit: cover;"
+              />
+              <div
+                v-else
+                class="rounded-circle border bg-light d-flex align-items-center justify-content-center text-muted"
+                style="width: 48px; height: 48px;"
+              >
+                👤
+              </div>
+            </div>
+
+            <div>
+              <h5 class="mb-1">{{ conversation.title }}</h5>
+              <p class="mb-1 text-muted">
+                {{ formatPreview(conversation.lastMessage) }}
+              </p>
+            </div>
           </div>
+
           <small class="text-muted">
             {{ formatDateTime(conversation.updatedAt) }}
           </small>
@@ -157,6 +178,11 @@ export default {
         clearInterval(this.refreshIntervalId);
         this.refreshIntervalId = null;
       }
+    },
+
+    // Returns true if the given photo string looks usable for rendering as an image.
+    hasPhoto(photo) {
+      return !!photo && photo.trim() !== "";
     },
 
 

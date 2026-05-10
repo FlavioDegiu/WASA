@@ -14,18 +14,34 @@
 
 
     <div v-else-if="conversation">
-      <div class="mb-3">
-        <h1 class="h3 mb-1">
-          {{ getConversationTitle() }}
-        </h1>
-        <div class="text-muted">
-          {{ getConversationSubtitle() }}
+      <div class="mb-3 d-flex align-items-center gap-3">
+        <!-- Conversation photo -->
+        <div>
+          <img
+            v-if="hasPhoto(getConversationPhoto())"
+            :src="getConversationPhoto()"
+            alt="Conversation"
+            class="rounded-circle border"
+            style="width: 56px; height: 56px; object-fit: cover;"
+          />
+          <div
+            v-else
+            class="rounded-circle border bg-light d-flex align-items-center justify-content-center text-muted"
+            style="width: 56px; height: 56px;"
+          >
+            👤
+          </div>
+        </div>
+
+        <div>
+          <h1 class="h3 mb-1">
+            {{ getConversationTitle() }}
+          </h1>
+          <div class="text-muted">
+            {{ getConversationSubtitle() }}
+          </div>
         </div>
       </div>
-
-      <div v-if="conversation && conversation.photo" class="text-muted small mb-3">
-        Photo: {{ conversation.photo }}
-      </div>    
 
       <!-- Group management section -->
       <div v-if="isGroupConversation()" class="card mb-4">
@@ -49,22 +65,35 @@
 
           <form @submit.prevent="updateGroupPhoto">
             <label class="form-label">Group photo</label>
-            <div class="input-group">
-              <input
-                v-model.trim="groupPhotoInput"
-                type="text"
-                class="form-control"
-                placeholder="Enter group photo path"
-              />
-              <button class="btn btn-outline-primary" type="submit">
-                Update Photo
-              </button>
-            </div>
-          </form>
 
-          <div class="mb-3 text-muted small">
-            Current photo: {{ conversation.photo || "No photo" }}
-          </div>
+            <input
+              ref="groupPhotoInput"
+              type="file"
+              class="form-control mb-2"
+              accept="image/*"
+              @change="handleGroupPhotoSelected"
+            />
+
+            <div v-if="selectedGroupPhotoPreview" class="mb-3">
+              <div class="small text-muted mb-1">Selected group photo preview</div>
+              <img
+                :src="selectedGroupPhotoPreview"
+                alt="Selected group preview"
+                class="img-fluid rounded border"
+                style="max-height: 200px;"
+              />
+
+              <div class="mt-2">
+                <button class="btn btn-sm btn-outline-secondary" type="button" @click="clearSelectedGroupPhoto">
+                  Remove selected image
+                </button>
+              </div>
+            </div>
+
+            <button class="btn btn-outline-primary" type="submit">
+              Update Photo
+            </button>
+          </form>
 
           <hr />
           <div>
@@ -104,15 +133,35 @@
 
       <div class="mb-4">
         <h2 class="h5">Members</h2>
-        <ul class="list-group">
-          <li
-            v-for="member in conversation.members"
-            :key="member.id"
-            class="list-group-item"
-          >
-            {{ member.username }}
-          </li>
-        </ul>
+          <ul class="list-group">
+            <li
+              v-for="member in conversation.members"
+              :key="member.id"
+              class="list-group-item d-flex align-items-center gap-3"
+            >
+              <img
+                v-if="hasPhoto(member.photo)"
+                :src="member.photo"
+                alt="Member"
+                class="rounded-circle border"
+                style="width: 40px; height: 40px; object-fit: cover;"
+              />
+              <div
+                v-else
+                class="rounded-circle border bg-light d-flex align-items-center justify-content-center text-muted"
+                style="width: 40px; height: 40px;"
+              >
+                👤
+              </div>
+
+              <div>
+                {{ member.username }}
+                <span v-if="member.id === currentUserId" class="text-muted small">
+                  (you)
+                </span>
+              </div>
+            </li>
+          </ul>
       </div>
 
       <div class="mb-4">
@@ -412,6 +461,8 @@ export default {
       replyingToMessage: null,
       selectedImageFile: null,
       selectedImagePreview: "",
+      selectedGroupPhotoFile: null,
+      selectedGroupPhotoPreview: "",
     };
   },
 
@@ -475,7 +526,6 @@ export default {
 
         // Keep editable group fields in sync with the loaded conversation.
         this.groupNameInput = this.conversation.name || "";
-        this.groupPhotoInput = this.conversation.photo || "";
 
         // Refresh the list of users that can still be added to this group.
         await this.loadAvailableUsersForGroup();
@@ -707,20 +757,26 @@ export default {
     async updateGroupPhoto() {
       if (!this.conversation || !this.conversation.id) return;
 
-      const newPhoto = this.groupPhotoInput.trim();
-      if (!newPhoto) {
-        this.errorMessage = "Group photo must be a non-empty string.";
-        return;
-      }
-
       this.errorMessage = "";
 
       try {
+        let photoToSend = this.groupPhotoInput.trim();
+
+        // If a file was selected, prefer it over the plain text field.
+        if (this.selectedGroupPhotoFile) {
+          photoToSend = await this.readSelectedGroupPhotoAsDataUrl();
+        }
+
+        if (!photoToSend) {
+          this.errorMessage = "Select an image or provide a group photo string.";
+          return;
+        }
+
         await api.put(`/groups/${this.conversation.id}/photo`, {
-          photo: newPhoto,
+          photo: photoToSend,
         });
 
-        // Reload the conversation so the UI shows the updated photo.
+        this.clearSelectedGroupPhoto();
         await this.loadConversation();
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
@@ -1095,6 +1151,79 @@ export default {
 
       const parsed = this.parseImageMessageContent(message);
       return parsed && parsed.imageData ? parsed.imageData : "";
+    },
+
+    // Returns true if the current conversation has a renderable photo string.
+    hasPhoto(photo) {
+      return !!photo && photo.trim() !== "";
+    },
+
+    // Returns the photo that should be shown in the conversation header.
+    // For groups, use the group photo.
+    // For direct conversations, use the other user's photo.
+    getConversationPhoto() {
+      if (!this.conversation) return "";
+
+      if (this.conversation.isGroup) {
+        return this.conversation.photo || "";
+      }
+
+      const otherMember = (this.conversation.members || []).find(
+        (member) => member.id !== this.currentUserId
+      );
+
+      return otherMember && otherMember.photo ? otherMember.photo : "";
+    },
+
+    // Handles group photo file selection and stores a preview.
+    handleGroupPhotoSelected(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) {
+        this.selectedGroupPhotoFile = null;
+        this.selectedGroupPhotoPreview = "";
+        return;
+      }
+
+      if (!file.type.startsWith("image/")) {
+        this.errorMessage = "Please select a valid image file.";
+        this.selectedGroupPhotoFile = null;
+        this.selectedGroupPhotoPreview = "";
+        return;
+      }
+
+      this.errorMessage = "";
+      this.selectedGroupPhotoFile = file;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        this.selectedGroupPhotoPreview = reader.result;
+      };
+      reader.readAsDataURL(file);
+    },
+
+    // Clears the selected group photo.
+    clearSelectedGroupPhoto() {
+      this.selectedGroupPhotoFile = null;
+      this.selectedGroupPhotoPreview = "";
+
+      if (this.$refs.groupPhotoInput) {
+        this.$refs.groupPhotoInput.value = "";
+      }
+    },
+
+    // Converts the selected group photo into a data URL string.
+    readSelectedGroupPhotoAsDataUrl() {
+      return new Promise((resolve, reject) => {
+        if (!this.selectedGroupPhotoFile) {
+          resolve("");
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error("Cannot read selected group photo"));
+        reader.readAsDataURL(this.selectedGroupPhotoFile);
+      });
     },
 
   },
