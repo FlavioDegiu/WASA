@@ -1,0 +1,40 @@
+# ---------- Build stage ----------
+FROM golang:1.25.1 AS builder
+
+# Set the working directory inside the container.
+WORKDIR /app
+
+# Copy go.mod and go.sum first to take advantage of Docker layer caching.
+COPY go.mod go.sum ./
+
+# Download dependencies.
+RUN go mod download
+
+# Copy the whole project source code.
+COPY . .
+
+# Build the backend executable.
+RUN go build -o /app/webapi ./cmd/webapi
+
+
+# ---------- Runtime stage ----------
+FROM debian:bookworm-slim
+
+# Install certificates needed for HTTPS requests.
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
+# Set the working directory.
+WORKDIR /app
+
+# Copy the compiled backend executable from the builder stage.
+COPY --from=builder /app/webapi /app/webapi
+
+# Copy any runtime files your app may need.
+COPY --from=builder /app/doc /app/doc
+COPY --from=builder /app/webui /app/webui
+
+# Expose the backend port.
+EXPOSE 3000
+
+# Start the backend server.
+CMD ["/app/webapi"]
