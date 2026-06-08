@@ -36,6 +36,7 @@ import (
 	"fmt"
 )
 
+// Domain errors
 var ErrGroupNotFound = errors.New("group not found (or requester is not a member of the group)")
 var ErrUserNotFound = errors.New("user not found")
 var ErrUserAlreadyInGroup = errors.New("user already belongs to the group")
@@ -44,6 +45,10 @@ var ErrConversationNotGroup = errors.New("target conversation is not a group")
 var ErrSourceMessageNotFound = errors.New("source message not found")
 var ErrDestinationConversationNotFound = errors.New("destination conversation not found")
 var ErrUserAlreadyReacted = errors.New("user already reacted to this message")
+
+/*
+Core backend data models used by the DB
+*/
 
 // User element
 type User struct {
@@ -91,7 +96,11 @@ type Comment struct {
 	CreatedAt      string
 }
 
-// AppDatabase is the high level interface for the DB
+/*
+AppDatabase is the high level interface for the DB
+
+It defines all operations the rest of the backend is allowed to perform on persistence.
+*/
 type AppDatabase interface {
 	Ping() error
 
@@ -128,8 +137,16 @@ type appdbimpl struct {
 	c *sql.DB
 }
 
-// New returns a new instance of AppDatabase based on the SQLite connection `db`.
-// `db` is required - an error will be returned if `db` is `nil`.
+/*
+New returns a new instance of AppDatabase based on the SQLite connection `db`.
+`db` is required - an error will be returned if `db` is `nil`.
+
+Schema initialization:
+- for each table
+- query sqlite_master
+- if the table does not exist
+- create it
+*/
 func New(db *sql.DB) (AppDatabase, error) {
 	if db == nil {
 		return nil, errors.New("database is required when building a AppDatabase")

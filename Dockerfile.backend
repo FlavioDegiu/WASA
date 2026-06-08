@@ -29,7 +29,7 @@ WORKDIR /app
 # Copy the compiled backend executable from the builder stage.
 COPY --from=builder /app/webapi /app/webapi
 
-# Copy any runtime files your app may need.
+# Copy any runtime files.
 COPY --from=builder /app/doc /app/doc
 COPY --from=builder /app/webui /app/webui
 

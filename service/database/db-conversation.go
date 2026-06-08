@@ -8,6 +8,19 @@ import (
 	"github.com/gofrs/uuid"
 )
 
+/*
+This file implements the conversation and group-related persistence logic.
+
+It contains the SQL operations for
+	creating conversations,
+	loading conversation members,
+	listing conversations for a user,
+	loading a full conversation,
+	adding a member to a group,
+	leaving a group,
+	updating group metadata
+*/
+
 // boolToInt adapts Go booleans to the integer representation used in SQLite
 func boolToInt(v bool) int {
 	if v {
@@ -16,17 +29,26 @@ func boolToInt(v bool) int {
 	return 0
 }
 
+/*
+Creates the conversation rows and the membership rows for the ceration of a new conversation
+*/
 func (db *appdbimpl) CreateConversation(currentUserID string, memberIDs []string, isGroup bool, name string, photo string) (Conversation, error) {
+
+	// Generate conversation ID
 	conversationID := "conv_" + uuid.Must(uuid.NewV4()).String()
 
+	// Atomicity guaranteed by Begin()
 	tx, err := db.c.Begin()
 	if err != nil {
 		return Conversation{}, fmt.Errorf("error starting transaction: %w", err)
 	}
+
+	// If the function returns early because of an error do rollback
 	defer func() {
 		_ = tx.Rollback()
 	}()
 
+	// Create main conversation row
 	_, err = tx.Exec(
 		`INSERT INTO conversations (id, is_group, name, photo) VALUES (?, ?, ?, ?)`,
 		conversationID,
@@ -42,6 +64,7 @@ func (db *appdbimpl) CreateConversation(currentUserID string, memberIDs []string
 	allMemberIDs := []string{currentUserID}
 	allMemberIDs = append(allMemberIDs, memberIDs...)
 
+	// Each user gets one membership row in the junction table
 	for _, userID := range allMemberIDs {
 		_, err = tx.Exec(
 			`INSERT INTO conversation_members (conversation_id, user_id) VALUES (?, ?)`,
@@ -53,11 +76,13 @@ func (db *appdbimpl) CreateConversation(currentUserID string, memberIDs []string
 		}
 	}
 
+	// Commit after conversation and membership
 	err = tx.Commit()
 	if err != nil {
 		return Conversation{}, fmt.Errorf("error committing transaction: %w", err)
 	}
 
+	// Load member objects
 	members := make([]User, 0, len(allMemberIDs))
 	for _, userID := range allMemberIDs {
 		user, err := db.GetUserByID(userID)
@@ -67,6 +92,7 @@ func (db *appdbimpl) CreateConversation(currentUserID string, memberIDs []string
 		members = append(members, user)
 	}
 
+	// Return conversation object
 	return Conversation{
 		ID:      conversationID,
 		IsGroup: isGroup,
@@ -109,6 +135,8 @@ func (db *appdbimpl) getConversationMembers(conversationID string) ([]User, erro
 
 // Returns all conversations where the given user is a member.
 func (db *appdbimpl) ListConversationsByUser(userID string) ([]Conversation, error) {
+
+	// Query that returns all conversatiuons where the user is a member
 	rows, err := db.c.Query(
 		`SELECT c.id, c.is_group, c.name, c.photo
 		FROM conversations c
@@ -128,6 +156,7 @@ func (db *appdbimpl) ListConversationsByUser(userID string) ([]Conversation, err
 
 	var conversations []Conversation
 	for rows.Next() {
+		// Convert the SQL conversation in a Go type
 		var conv Conversation
 		var isGroupInt int
 
@@ -154,7 +183,7 @@ func (db *appdbimpl) ListConversationsByUser(userID string) ([]Conversation, err
 		conv.LastMessage = lastMessage
 
 		// The conversation last activity is the latest message timestamp if available.
-		// Otherwise, leave it empty for now.
+		// Otherwise, leave it empty
 		if lastMessage != nil {
 			conv.LastActivityAt = lastMessage.CreatedAt
 		} else {
@@ -176,8 +205,8 @@ func (db *appdbimpl) GetConversationByIDForUser(conversationID string, userID st
 	var conv Conversation
 	var isGroupInt int
 
-	// We join with conversation_members so that a user can only read
-	// conversations they actually belong to.
+	// Join with conversation_members so that a user can only read
+	// conversations he actually belongs to.
 	err := db.c.QueryRow(
 		`SELECT c.id, c.is_group, c.name, c.photo
 		 FROM conversations c
@@ -212,6 +241,7 @@ func (db *appdbimpl) GetConversationByIDForUser(conversationID string, userID st
 
 // Adds a user to a group conversation if the requester already belongs to it.
 func (db *appdbimpl) AddUserToGroup(groupID string, requesterID string, userIDToAdd string) (Conversation, error) {
+
 	// Load the conversation only if the requester already belongs to it.
 	conv, err := db.GetConversationByIDForUser(groupID, requesterID)
 	if err != nil {
@@ -265,6 +295,7 @@ func (db *appdbimpl) AddUserToGroup(groupID string, requesterID string, userIDTo
 
 // Removes the authenticated user from a group conversation.
 func (db *appdbimpl) LeaveGroup(groupID string, userID string) error {
+
 	// Load the conversation only if the user currently belongs to it.
 	conv, err := db.GetConversationByIDForUser(groupID, userID)
 	if err != nil {
@@ -302,6 +333,7 @@ func (db *appdbimpl) LeaveGroup(groupID string, userID string) error {
 
 // Updates the name of a group conversation if the requester belongs to it.
 func (db *appdbimpl) SetGroupName(groupID string, requesterID string, newName string) (Conversation, error) {
+
 	// Load the conversation only if the requester already belongs to it.
 	conv, err := db.GetConversationByIDForUser(groupID, requesterID)
 	if err != nil {
@@ -345,6 +377,7 @@ func (db *appdbimpl) SetGroupName(groupID string, requesterID string, newName st
 
 // Updates the photo of a group conversation if the requester belongs to it.
 func (db *appdbimpl) SetGroupPhoto(groupID string, requesterID string, newPhoto string) (Conversation, error) {
+
 	// Load the conversation only if the requester already belongs to it.
 	conv, err := db.GetConversationByIDForUser(groupID, requesterID)
 	if err != nil {

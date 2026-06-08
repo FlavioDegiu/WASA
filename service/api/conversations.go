@@ -8,10 +8,15 @@ import (
 	"strings"
 
 	"git.sapienzaapps.it/fantasticcoffee/fantastic-coffee-decaffeinated/service/api/reqcontext"
-	"git.sapienzaapps.it/fantasticcoffee/fantastic-coffee-decaffeinated/service/database"
 	"github.com/julienschmidt/httprouter"
 )
 
+/*
+This file implements the conversation-related endpoints of the API.
+It handles conversation creation, conversation list retrieval, and loading a full conversation.
+*/
+
+// JSON model for POST /conversations
 type createConversationRequest struct {
 	IsGroup bool     `json:"isGroup"`
 	Name    string   `json:"name"`
@@ -19,32 +24,22 @@ type createConversationRequest struct {
 	Members []string `json:"members"`
 }
 
-// Converts a database conversation into the full API response object.
-func conversationToResponse(conv database.Conversation) map[string]interface{} {
-	messageItems := make([]interface{}, 0, len(conv.Messages))
-	for _, msg := range conv.Messages {
-		messageItems = append(messageItems, messageToResponse(msg))
-	}
+/*
+This handler implements
 
-	resp := map[string]interface{}{
-		"id":       conv.ID,
-		"isGroup":  conv.IsGroup,
-		"members":  usersToResponse(conv.Members),
-		"messages": messageItems,
-	}
+POST /conversations
 
-	// Add optional fields only when present.
-	if conv.Name != "" {
-		resp["name"] = conv.Name
-	}
-	if conv.Photo != "" {
-		resp["photo"] = conv.Photo
-	}
-
-	return resp
-}
-
+Main flow:
+- authenticate the user
+- decode request body
+- validate conversation rules
+- validate requested members
+- create the conversation in the database
+- return the created conversation
+*/
 func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+
+	// Bearer auth
 	userID, ok := getBearerToken(r)
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, errorResponse{
@@ -53,6 +48,7 @@ func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps
 		return
 	}
 
+	// Decode request body
 	var req createConversationRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
@@ -63,9 +59,11 @@ func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps
 		return
 	}
 
+	// Trim space
 	req.Name = strings.TrimSpace(req.Name)
 	req.Photo = strings.TrimSpace(req.Photo)
 
+	// Validate that members are present
 	if len(req.Members) == 0 {
 		writeJSON(w, http.StatusBadRequest, errorResponse{
 			Message: "members must contain at least one user",
@@ -74,6 +72,7 @@ func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps
 	}
 
 	// Groups require a visible name
+	// Direct conversation must have only one user
 	if req.IsGroup {
 		if req.Name == "" {
 			writeJSON(w, http.StatusBadRequest, errorResponse{
@@ -90,6 +89,7 @@ func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps
 		}
 	}
 
+	// Validate each conversation member
 	for _, memberID := range req.Members {
 
 		// The creator is automatically added later, so it must not appear in the payload.
@@ -118,6 +118,7 @@ func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps
 		}
 	}
 
+	// Create conversation in db layer
 	conv, err := rt.db.CreateConversation(userID, req.Members, req.IsGroup, req.Name, req.Photo)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot create conversation")
@@ -130,70 +131,20 @@ func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps
 	writeJSON(w, http.StatusCreated, conversationToResponse(conv))
 }
 
-// Converts a database conversation into the smaller summary object used by GET /conversations.
-func conversationSummaryToResponse(conv database.Conversation, currentUserID string) map[string]interface{} {
-	title := conv.Name
-	photo := conv.Photo
+/*
+This handler implements
 
-	// For direct conversations, show the other user's username and photo.
-	if !conv.IsGroup {
-		for _, member := range conv.Members {
-			if member.ID != currentUserID {
-				title = member.Username
-				photo = member.Photo
-				break
-			}
-		}
-	}
+GET /conversations
 
-	// Build a default empty preview for conversations with no messages yet.
-	lastMessage := map[string]interface{}{
-		"type":      "text",
-		"content":   "",
-		"senderId":  "",
-		"createdAt": "",
-	}
-
-	// If there is a latest message, build a real preview from it.
-	if conv.LastMessage != nil {
-		content := conv.LastMessage.Content
-
-		// Deleted messages get a placeholder preview.
-		if conv.LastMessage.Deleted {
-			content = "[deleted message]"
-		}
-
-		// For image and gif messages, keep the preview simple.
-		if conv.LastMessage.Type == "image" || conv.LastMessage.Type == "gif" {
-			content = ""
-		}
-
-		lastMessage = map[string]interface{}{
-			"type":      conv.LastMessage.Type,
-			"content":   content,
-			"senderId":  conv.LastMessage.SenderID,
-			"createdAt": conv.LastMessage.CreatedAt,
-		}
-	}
-
-	resp := map[string]interface{}{
-		"id":          conv.ID,
-		"isGroup":     conv.IsGroup,
-		"title":       title,
-		"updatedAt":   conv.LastActivityAt,
-		"lastMessage": lastMessage,
-	}
-
-	// Add photo only if present.
-	if photo != "" {
-		resp["photo"] = photo
-	}
-
-	return resp
-}
-
-// Returns all conversations of the authenticated user.
+Main flow:
+- authenticate the user
+- mark visible incoming messages as delivered
+- load all conversations for the user
+- convert them into summary objects
+- return them as JSON
+*/
 func (rt *_router) getMyConversations(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+
 	// Extract the authenticated user ID from the Bearer token.
 	userID, ok := getBearerToken(r)
 	if !ok {
@@ -204,6 +155,7 @@ func (rt *_router) getMyConversations(w http.ResponseWriter, r *http.Request, ps
 	}
 
 	// Loading the conversation list means the user has received visible incoming messages.
+	// Mark them as delivered
 	err := rt.db.MarkConversationsAsDelivered(userID)
 	if err != nil {
 		ctx.Logger.WithError(err).Error("cannot mark conversations as delivered")
@@ -234,8 +186,19 @@ func (rt *_router) getMyConversations(w http.ResponseWriter, r *http.Request, ps
 	})
 }
 
-// Returns one conversation if the authenticated user belongs to it.
+/*
+This handler implements
+
+GET /conversations/:conversationId
+
+Main flow:
+- authenticate the user
+- read the conversation ID from the route
+- ensure the user belongs to the conversation
+- return the full conversation
+*/
 func (rt *_router) getConversation(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+
 	// Extract the authenticated user from the Bearer token.
 	userID, ok := getBearerToken(r)
 	if !ok {

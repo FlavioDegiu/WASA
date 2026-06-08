@@ -12,6 +12,16 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+/*
+This file implements the group-management endpoints of the API.
+
+It handles
+	adding members to a group,
+	leaving a group,
+	and updating group metadata
+*/
+
+// JSON Request models
 type addToGroupRequest struct {
 	UserID string `json:"userId"`
 }
@@ -24,8 +34,21 @@ type setGroupPhotoRequest struct {
 	Photo string `json:"photo"`
 }
 
-// Adds a user to a group conversation.
+/*
+This handler implements
+
+POST /groups/:groupId/members
+
+Main flow:
+- authenticate the requester
+- identify the target group
+- decode the user to add
+- validate the request
+- delegate the real membership update to the DB layer
+- return the updated conversation
+*/
 func (rt *_router) addToGroup(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+
 	// Authenticate the requester from the Bearer token.
 	requesterID, ok := getBearerToken(r)
 	if !ok {
@@ -55,6 +78,7 @@ func (rt *_router) addToGroup(w http.ResponseWriter, r *http.Request, ps httprou
 		return
 	}
 
+	// Validate user
 	req.UserID = strings.TrimSpace(req.UserID)
 	if req.UserID == "" {
 		writeJSON(w, http.StatusBadRequest, errorResponse{
@@ -71,7 +95,7 @@ func (rt *_router) addToGroup(w http.ResponseWriter, r *http.Request, ps httprou
 		return
 	}
 
-	// Try to add the new member to the group.
+	// Try to add the new member to the group via the DB layer.
 	conv, err := rt.db.AddUserToGroup(groupID, requesterID, req.UserID)
 	if err != nil {
 		switch {
@@ -111,8 +135,15 @@ func (rt *_router) addToGroup(w http.ResponseWriter, r *http.Request, ps httprou
 	writeJSON(w, http.StatusOK, conversationToResponse(conv))
 }
 
-// Removes the authenticated user from a group conversation.
+/*
+This handler implements
+
+DELETE /groups/:groupId/members/me
+
+Its job is to remove the authenticated user from a group.
+*/
 func (rt *_router) leaveGroup(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+
 	// Authenticate the user from the Bearer token.
 	userID, ok := getBearerToken(r)
 	if !ok {
@@ -160,8 +191,15 @@ func (rt *_router) leaveGroup(w http.ResponseWriter, r *http.Request, ps httprou
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Updates the name of a group conversation.
+/*
+This handler implements
+
+PUT /groups/:groupId/name
+
+Its purpose is to change the visible name of a group.
+*/
 func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+
 	// Authenticate the requester from the Bearer token.
 	requesterID, ok := getBearerToken(r)
 	if !ok {
@@ -191,6 +229,7 @@ func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httpr
 		return
 	}
 
+	// Validate group name
 	req.Name = strings.TrimSpace(req.Name)
 	if req.Name == "" {
 		writeJSON(w, http.StatusBadRequest, errorResponse{
@@ -233,8 +272,15 @@ func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httpr
 	writeJSON(w, http.StatusOK, conversationToResponse(conv))
 }
 
-// Updates the photo of a group conversation.
+/*
+This handler implements
+
+PUT /groups/:groupId/photo
+
+Very similar top setGroupName
+*/
 func (rt *_router) setGroupPhoto(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+
 	// Authenticate the requester from the Bearer token.
 	requesterID, ok := getBearerToken(r)
 	if !ok {
@@ -264,6 +310,7 @@ func (rt *_router) setGroupPhoto(w http.ResponseWriter, r *http.Request, ps http
 		return
 	}
 
+	// Validate photo input (Base64)
 	req.Photo = strings.TrimSpace(req.Photo)
 	if req.Photo == "" {
 		writeJSON(w, http.StatusBadRequest, errorResponse{

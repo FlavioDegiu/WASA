@@ -12,6 +12,17 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+/*
+This file implements the message-related endpoints of the API.
+It handles
+	sending messages,
+	marking them as read,
+	soft-deleting them,
+	adding and removing reactions,
+	forwarding messages
+*/
+
+// JSON Request models
 type sendMessageRequest struct {
 	Type             string `json:"type"`
 	Content          string `json:"content"`
@@ -26,55 +37,21 @@ type forwardMessageRequest struct {
 	ConversationID string `json:"conversationId"`
 }
 
-// Converts one database message into the API response object.
-func messageToResponse(msg database.Message) map[string]interface{} {
+/*
+This handler implements
 
-	commentItems := make([]interface{}, 0, len(msg.Comments))
-	for _, comment := range msg.Comments {
-		commentItems = append(commentItems, commentToResponse(comment))
-	}
+POST /conversations/:conversationId/messages
 
-	resp := map[string]interface{}{
-		"id":             msg.ID,
-		"conversationId": msg.ConversationID,
-		"senderId":       msg.SenderID,
-		"senderUsername": msg.SenderUsername,
-		"type":           msg.Type,
-		"content":        msg.Content,
-		"createdAt":      msg.CreatedAt,
-		"deleted":        msg.Deleted,
-		"status": map[string]interface{}{
-			"deliveredToAll": msg.DeliveredToAll,
-			"readByAll":      msg.ReadByAll,
-		},
-		"comments": commentItems,
-	}
-
-	// Add optional fields only when present.
-	if msg.ReplyToMessageID != "" {
-		resp["replyToMessageId"] = msg.ReplyToMessageID
-	}
-	if msg.ForwardedFromMessageID != "" {
-		resp["forwardedFromMessageId"] = msg.ForwardedFromMessageID
-	}
-
-	return resp
-}
-
-// Converts one database comment into the API response object.
-func commentToResponse(comment database.Comment) map[string]interface{} {
-	return map[string]interface{}{
-		"id":             comment.ID,
-		"messageId":      comment.MessageID,
-		"authorId":       comment.AuthorID,
-		"authorUsername": comment.AuthorUsername,
-		"content":        comment.Content,
-		"createdAt":      comment.CreatedAt,
-	}
-}
-
-// Sends a new message inside a conversation.
+Main flow:
+- authenticate the sender
+- extract conversation ID
+- decode request body
+- validate message type/content
+- create the message in DB
+- return the created message
+*/
 func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+
 	// Authenticate the user from the Bearer token.
 	userID, ok := getBearerToken(r)
 	if !ok {
@@ -104,6 +81,7 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 		return
 	}
 
+	// Field normalization
 	req.Type = strings.TrimSpace(req.Type)
 	req.Content = strings.TrimSpace(req.Content)
 	req.ReplyToMessageID = strings.TrimSpace(req.ReplyToMessageID)
@@ -115,6 +93,8 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 		})
 		return
 	}
+
+	// Validate content not empty
 	if req.Content == "" {
 		writeJSON(w, http.StatusBadRequest, errorResponse{
 			Message: "message content must be a non-empty string",
@@ -142,8 +122,20 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 	writeJSON(w, http.StatusCreated, messageToResponse(msg))
 }
 
-// Marks a message as read for the authenticated user.
+/*
+Mark messages as read for the authenticated user
+
+# This handler implements
+
+PUT /messages/:messageId/read]
+
+Main flow:
+- authenticate the user
+- identify the message
+- record a read receipt for that user
+*/
 func (rt *_router) markMessageAsRead(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+
 	// Authenticate the user from the Bearer token.
 	userID, ok := getBearerToken(r)
 	if !ok {
@@ -162,7 +154,7 @@ func (rt *_router) markMessageAsRead(w http.ResponseWriter, r *http.Request, ps 
 		return
 	}
 
-	// Mark the message as read.
+	// Mark the message as read via the DB layer.
 	err := rt.db.MarkMessageAsRead(messageID, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -183,8 +175,13 @@ func (rt *_router) markMessageAsRead(w http.ResponseWriter, r *http.Request, ps 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Deletes one of the authenticated user's sent messages.
-// The message is not physically removed from the database; it is only marked as deleted.
+/*
+This handler implements
+
+DELETE /messages/:messageId
+
+Its purpose is to soft-delete one of the authenticated user’s own sent messages.
+*/
 func (rt *_router) deleteMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	// Authenticate the user from the Bearer token.
 	userID, ok := getBearerToken(r)
@@ -234,8 +231,21 @@ func (rt *_router) deleteMessage(w http.ResponseWriter, r *http.Request, ps http
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Adds a reaction/comment to a message.
+/*
+This handler implements
+
+POST /messages/:messageId/comments
+
+Main flow:
+- authenticate user
+- identify target message
+- decode comment body
+- validate it as exactly one emoji
+- create the reaction
+- return the created comment
+*/
 func (rt *_router) commentMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+
 	// Authenticate the user from the Bearer token.
 	userID, ok := getBearerToken(r)
 	if !ok {
@@ -275,6 +285,7 @@ func (rt *_router) commentMessage(w http.ResponseWriter, r *http.Request, ps htt
 		return
 	}
 
+	// Add comment in the DB layer
 	comment, err := rt.db.CreateComment(messageID, userID, req.Content)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -284,6 +295,7 @@ func (rt *_router) commentMessage(w http.ResponseWriter, r *http.Request, ps htt
 			return
 		}
 
+		//User can only react once to the comment
 		if errors.Is(err, database.ErrUserAlreadyReacted) {
 			writeJSON(w, http.StatusConflict, errorResponse{
 				Message: "you already reacted to this message",
@@ -301,8 +313,15 @@ func (rt *_router) commentMessage(w http.ResponseWriter, r *http.Request, ps htt
 	writeJSON(w, http.StatusCreated, commentToResponse(comment))
 }
 
-// Removes one of the authenticated user's comments from a message.
+/*
+This handler implements
+
+DELETE /messages/:messageId/comments/:commentId
+
+Its purpose is to remove one of the current user’s own reactions/comments.
+*/
 func (rt *_router) uncommentMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+
 	// Authenticate the user from the Bearer token.
 	userID, ok := getBearerToken(r)
 	if !ok {
@@ -358,8 +377,20 @@ func (rt *_router) uncommentMessage(w http.ResponseWriter, r *http.Request, ps h
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Forwards an existing message into another conversation.
+/*
+This handler implements
+
+POST /messages/:messageId/forward
+
+Main flow:
+- authenticate the user
+- identify the source message
+- read destination conversation from request body
+- create a forwarded copy in the destination conversation
+- return the new message
+*/
 func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+
 	// Authenticate the user from the Bearer token.
 	userID, ok := getBearerToken(r)
 	if !ok {
@@ -369,6 +400,7 @@ func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps htt
 		return
 	}
 
+	// Source
 	// Read the source message ID from the URL path.
 	messageID := ps.ByName("messageId")
 	if messageID == "" {
@@ -378,7 +410,8 @@ func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps htt
 		return
 	}
 
-	// Decode the request body.
+	// Destination
+	// Decode the destination from request body.
 	var req forwardMessageRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
@@ -389,6 +422,7 @@ func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps htt
 		return
 	}
 
+	// Destination check
 	req.ConversationID = strings.TrimSpace(req.ConversationID)
 	if req.ConversationID == "" {
 		writeJSON(w, http.StatusBadRequest, errorResponse{

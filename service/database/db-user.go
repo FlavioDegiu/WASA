@@ -7,10 +7,24 @@ import (
 	"github.com/gofrs/uuid"
 )
 
-// Create a new user
+/*
+This file implements the user-related database operations.
+
+It contains the SQL logic for
+	creating users,
+	retrieving users,
+	listing users,
+	updating username and photo,
+	checking whether a user belongs to a conversation or can access a message
+*/
+
+// Create a new user in the DB
 func (db *appdbimpl) CreateUser(username string) (User, error) {
+
+	// Create a new ID
 	userID := "user_" + uuid.Must(uuid.NewV4()).String()
 
+	// Insert into DB
 	_, err := db.c.Exec(
 		`INSERT INTO users (id, username, photo) VALUES (?, ?, ?)`,
 		userID,
@@ -21,7 +35,7 @@ func (db *appdbimpl) CreateUser(username string) (User, error) {
 		return User{}, fmt.Errorf("error creating user: %w", err)
 	}
 
-	// New users start without a profile photo.
+	// Return the created object
 	return User{
 		ID:       userID,
 		Username: username,
@@ -31,8 +45,10 @@ func (db *appdbimpl) CreateUser(username string) (User, error) {
 
 // GetUserByUsername loads a single user using the username as lookup key
 func (db *appdbimpl) GetUserByUsername(username string) (User, error) {
+
 	var user User
 
+	// SQL query
 	err := db.c.QueryRow(
 		`SELECT id, username, photo FROM users WHERE username = ?`,
 		username,
@@ -47,8 +63,10 @@ func (db *appdbimpl) GetUserByUsername(username string) (User, error) {
 
 // GetUserByID loads a single user using the internal id
 func (db *appdbimpl) GetUserByID(id string) (User, error) {
+
 	var user User
 
+	// SQL query
 	err := db.c.QueryRow(
 		`SELECT id, username, photo FROM users WHERE id = ?`,
 		id,
@@ -63,6 +81,7 @@ func (db *appdbimpl) GetUserByID(id string) (User, error) {
 
 // Returns all the users in the database, optionally filtered by name
 func (db *appdbimpl) ListUsers(usernameFilter string) ([]User, error) {
+
 	var rows *sql.Rows
 	var err error
 
@@ -85,6 +104,7 @@ func (db *appdbimpl) ListUsers(usernameFilter string) ([]User, error) {
 	defer rows.Close()
 
 	var users []User
+	// Scan row by row
 	for rows.Next() {
 		var user User
 		if err := rows.Scan(&user.ID, &user.Username, &user.Photo); err != nil {
@@ -102,6 +122,7 @@ func (db *appdbimpl) ListUsers(usernameFilter string) ([]User, error) {
 
 // UpdateUserName changes the username and returns the updated record
 func (db *appdbimpl) UpdateUserName(id string, newUsername string) (User, error) {
+
 	result, err := db.c.Exec(
 		`UPDATE users SET username = ? WHERE id = ?`,
 		newUsername,
@@ -125,6 +146,7 @@ func (db *appdbimpl) UpdateUserName(id string, newUsername string) (User, error)
 
 // UpdateUserPhoto changes the profile photo and returns the updated record
 func (db *appdbimpl) UpdateUserPhoto(id string, photo string) (User, error) {
+
 	result, err := db.c.Exec(
 		`UPDATE users SET photo = ? WHERE id = ?`,
 		photo,
