@@ -45,6 +45,8 @@ var ErrConversationNotGroup = errors.New("target conversation is not a group")
 var ErrSourceMessageNotFound = errors.New("source message not found")
 var ErrDestinationConversationNotFound = errors.New("destination conversation not found")
 var ErrUserAlreadyReacted = errors.New("user already reacted to this message")
+var ErrMessageNotOwned = errors.New("message does not belong to the authenticated user")
+var ErrCommentNotOwned = errors.New("comment does not belong to the authenticated user")
 
 /*
 Core backend data models used by the DB

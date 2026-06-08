@@ -9,21 +9,20 @@ import (
 	"github.com/gofrs/uuid"
 )
 
-// ErrMessageNotOwned is returned when a user tries to delete a message they did not send
-var ErrMessageNotOwned = errors.New("message does not belong to the authenticated user")
-
-// ErrCommentNotOwned is returned when a user tries to delete a comment that they did not create
-var ErrCommentNotOwned = errors.New("comment does not belong to the authenticated user")
-
-// Creates a new message inside a conversation if the sender belongs to it
+/*
+Creates a new message inside a conversation if the sender belongs to it
+Delegates the logic to createMessageWithForward with the forward field empty
+*/
 func (db *appdbimpl) CreateMessage(conversationID string, senderID string, messageType string, content string, replyToMessageID string) (Message, error) {
 	return db.createMessageWithForward(conversationID, senderID, messageType, content, replyToMessageID, "")
 }
 
 // Returns one message by ID with sender username included.
 func (db *appdbimpl) getMessageByID(messageID string) (Message, error) {
+
 	var msg Message
 
+	//Base query. Join with 'users' because senderUsername is needed
 	err := db.c.QueryRow(
 		`SELECT m.id, m.conversation_id, m.sender_id, u.username, m.type, m.content,
 		        m.reply_to_message_id, m.forwarded_from_message_id, m.created_at, m.deleted
@@ -47,6 +46,7 @@ func (db *appdbimpl) getMessageByID(messageID string) (Message, error) {
 		return Message{}, err
 	}
 
+	//Enrich the message data with data from the database using helper functions
 	msg.DeliveredToAll, err = db.IsMessageDeliveredToAll(msg.ID)
 	if err != nil {
 		return Message{}, fmt.Errorf("error computing message delivery status: %w", err)
@@ -65,7 +65,9 @@ func (db *appdbimpl) getMessageByID(messageID string) (Message, error) {
 	return msg, nil
 }
 
-// Creates a new message row, optionally linking it to a forwarded source message.
+/*
+Creates a new message row, optionally linking it to a forwarded source message.
+*/
 func (db *appdbimpl) createMessageWithForward(
 	conversationID string,
 	senderID string,
@@ -74,7 +76,8 @@ func (db *appdbimpl) createMessageWithForward(
 	replyToMessageID string,
 	forwardedFromMessageID string,
 ) (Message, error) {
-	// The sender must belong to the destination conversation.
+
+	// Membership check
 	belongs, err := db.userBelongsToConversation(conversationID, senderID)
 	if err != nil {
 		return Message{}, err
@@ -83,9 +86,11 @@ func (db *appdbimpl) createMessageWithForward(
 		return Message{}, sql.ErrNoRows
 	}
 
+	// Generate ID and timestamp
 	messageID := "msg_" + uuid.Must(uuid.NewV4()).String()
 	createdAt := time.Now().UTC().Format(time.RFC3339)
 
+	// Message insertion
 	_, err = db.c.Exec(
 		`INSERT INTO messages (
 			id, conversation_id, sender_id, type, content, reply_to_message_id, forwarded_from_message_id, created_at, deleted
@@ -112,9 +117,12 @@ func (db *appdbimpl) createMessageWithForward(
 	return msg, nil
 }
 
-// Returns all messages of a conversation if the given user belongs to it
+/*
+Returns all messages of a conversation if the given user belongs to it
+*/
 func (db *appdbimpl) ListMessagesByConversationForUser(conversationID string, userID string) ([]Message, error) {
-	// Do not expose messages from conversations the user does not belong to
+
+	// Membership check
 	belongs, err := db.userBelongsToConversation(conversationID, userID)
 	if err != nil {
 		return nil, err
@@ -123,6 +131,7 @@ func (db *appdbimpl) ListMessagesByConversationForUser(conversationID string, us
 		return nil, sql.ErrNoRows
 	}
 
+	// SQL query - newest first
 	rows, err := db.c.Query(
 		`SELECT m.id, m.conversation_id, m.sender_id, u.username, m.type, m.content,
 		        m.reply_to_message_id, m.forwarded_from_message_id, m.created_at, m.deleted
@@ -185,8 +194,10 @@ func (db *appdbimpl) ListMessagesByConversationForUser(conversationID string, us
 
 // Returns the conversation ID that owns the given message.
 func (db *appdbimpl) getConversationIDByMessageID(messageID string) (string, error) {
+
 	var conversationID string
 
+	// Little SQL query to find the conversation that owns a message
 	err := db.c.QueryRow(
 		`SELECT conversation_id FROM messages WHERE id = ?`,
 		messageID,
@@ -198,8 +209,9 @@ func (db *appdbimpl) getConversationIDByMessageID(messageID string) (string, err
 	return conversationID, nil
 }
 
-// Marks a message as read by the given user.
+// Marks a message as read by the given user
 func (db *appdbimpl) MarkMessageAsRead(messageID string, userID string) error {
+
 	// Find which conversation this message belongs to.
 	conversationID, err := db.getConversationIDByMessageID(messageID)
 	if err != nil {
@@ -215,10 +227,11 @@ func (db *appdbimpl) MarkMessageAsRead(messageID string, userID string) error {
 		return sql.ErrNoRows
 	}
 
+	// Read timestamp
 	readAt := time.Now().UTC().Format(time.RFC3339)
 
 	// INSERT OR REPLACE keeps the operation idempotent:
-	// if the user marks it as read twice, we still end in a valid state.
+	// if the user marks it as read twice, we still end in a valid state
 	_, err = db.c.Exec(
 		`INSERT OR REPLACE INTO message_reads (message_id, user_id, read_at) VALUES (?, ?, ?)`,
 		messageID,
@@ -234,6 +247,7 @@ func (db *appdbimpl) MarkMessageAsRead(messageID string, userID string) error {
 
 // Returns true if every recipient of a message has read it.
 func (db *appdbimpl) IsMessageReadByAll(messageID string) (bool, error) {
+
 	var conversationID string
 	var senderID string
 
@@ -246,6 +260,7 @@ func (db *appdbimpl) IsMessageReadByAll(messageID string) (bool, error) {
 		return false, err
 	}
 
+	// Conta i riceventi
 	var recipientCount int
 	err = db.c.QueryRow(
 		`SELECT COUNT(*) FROM conversation_members
@@ -257,6 +272,7 @@ func (db *appdbimpl) IsMessageReadByAll(messageID string) (bool, error) {
 		return false, fmt.Errorf("error counting recipients: %w", err)
 	}
 
+	// Conta quanti lo hanno letto
 	var readCount int
 	err = db.c.QueryRow(
 		`SELECT COUNT(*) FROM message_reads
@@ -273,8 +289,11 @@ func (db *appdbimpl) IsMessageReadByAll(messageID string) (bool, error) {
 
 // Marks as delivered all messages that belong to conversations visible to the given user.
 func (db *appdbimpl) MarkConversationsAsDelivered(userID string) error {
+
+	// Deliver timestamp
 	deliveredAt := time.Now().UTC().Format(time.RFC3339)
 
+	// SQL insertion
 	_, err := db.c.Exec(
 		`INSERT OR IGNORE INTO message_deliveries (message_id, user_id, delivered_at)
 		 SELECT m.id, ?, ?
@@ -294,11 +313,20 @@ func (db *appdbimpl) MarkConversationsAsDelivered(userID string) error {
 	return nil
 }
 
-// Returns true if every recipient of a message has received it in their conversation list.
+/*
+Returns true if every recipient of a message has received it in their conversation list.
+
+- load conversation and sender
+- count recipients excluding sender
+- count deliveries excluding sender
+- compare counts
+*/
 func (db *appdbimpl) IsMessageDeliveredToAll(messageID string) (bool, error) {
+
 	var conversationID string
 	var senderID string
 
+	// Load conversation and sender
 	err := db.c.QueryRow(
 		`SELECT conversation_id, sender_id FROM messages WHERE id = ?`,
 		messageID,
@@ -307,6 +335,7 @@ func (db *appdbimpl) IsMessageDeliveredToAll(messageID string) (bool, error) {
 		return false, err
 	}
 
+	// Cound recipients
 	var recipientCount int
 	err = db.c.QueryRow(
 		`SELECT COUNT(*) FROM conversation_members
@@ -318,6 +347,7 @@ func (db *appdbimpl) IsMessageDeliveredToAll(messageID string) (bool, error) {
 		return false, fmt.Errorf("error counting message recipients: %w", err)
 	}
 
+	// Count delivered
 	var deliveredCount int
 	err = db.c.QueryRow(
 		`SELECT COUNT(*) FROM message_deliveries
@@ -332,7 +362,9 @@ func (db *appdbimpl) IsMessageDeliveredToAll(messageID string) (bool, error) {
 	return recipientCount > 0 && deliveredCount == recipientCount, nil
 }
 
-// Marks a message as deleted if it belongs to the given sender.
+/*
+Marks a message as deleted if it belongs to the given sender.
+*/
 func (db *appdbimpl) DeleteMessage(messageID string, userID string) error {
 	var senderID string
 
@@ -372,6 +404,7 @@ func (db *appdbimpl) DeleteMessage(messageID string, userID string) error {
 
 // Creates a comment on a message if the author belongs to the conversation.
 func (db *appdbimpl) CreateComment(messageID string, authorID string, content string) (Comment, error) {
+
 	// Only users in the conversation can comment the message.
 	canAccess, err := db.userCanAccessMessage(messageID, authorID)
 	if err != nil {
@@ -395,9 +428,11 @@ func (db *appdbimpl) CreateComment(messageID string, authorID string, content st
 		return Comment{}, ErrUserAlreadyReacted
 	}
 
+	// ID and timestamp
 	commentID := "comm_" + uuid.Must(uuid.NewV4()).String()
 	createdAt := time.Now().UTC().Format(time.RFC3339)
 
+	// SQL insertion of the comment
 	_, err = db.c.Exec(
 		`INSERT INTO comments (id, message_id, author_id, content, created_at)
 		 VALUES (?, ?, ?, ?, ?)`,
@@ -411,6 +446,7 @@ func (db *appdbimpl) CreateComment(messageID string, authorID string, content st
 		return Comment{}, fmt.Errorf("error creating comment: %w", err)
 	}
 
+	// Return the comment by querying from the DB
 	var comment Comment
 	err = db.c.QueryRow(
 		`SELECT c.id, c.message_id, c.author_id, u.username, c.content, c.created_at
@@ -435,6 +471,8 @@ func (db *appdbimpl) CreateComment(messageID string, authorID string, content st
 
 // Returns all comments attached to a message.
 func (db *appdbimpl) ListCommentsByMessageID(messageID string) ([]Comment, error) {
+
+	// SQL query
 	rows, err := db.c.Query(
 		`SELECT c.id, c.message_id, c.author_id, u.username, c.content, c.created_at
 		 FROM comments c
@@ -448,6 +486,7 @@ func (db *appdbimpl) ListCommentsByMessageID(messageID string) ([]Comment, error
 	}
 	defer rows.Close()
 
+	// rows decoding
 	var comments []Comment
 	for rows.Next() {
 		var comment Comment
@@ -471,8 +510,10 @@ func (db *appdbimpl) ListCommentsByMessageID(messageID string) ([]Comment, error
 	return comments, nil
 }
 
-// Deletes a comment only if it belongs to the given author
-// and is attached to the given message.
+/*
+Deletes a comment only if it belongs to the given author
+and is attached to the given message.
+*/
 func (db *appdbimpl) DeleteComment(messageID string, commentID string, userID string) error {
 	var authorID string
 
@@ -515,9 +556,12 @@ func (db *appdbimpl) DeleteComment(messageID string, commentID string, userID st
 	return nil
 }
 
-// Forwards an existing message into another conversation if the user
-// can access the source message and belongs to the destination conversation.
+/*
+Forwards an existing message into another conversation if the user
+can access the source message and belongs to the destination conversation.
+*/
 func (db *appdbimpl) ForwardMessage(messageID string, senderID string, destinationConversationID string) (Message, error) {
+
 	// The user must be allowed to see the source message.
 	canAccessSource, err := db.userCanAccessMessage(messageID, senderID)
 	if err != nil {
@@ -569,8 +613,10 @@ func (db *appdbimpl) ForwardMessage(messageID string, senderID string, destinati
 
 // Returns the latest message of a conversation, or nil if the conversation has no messages yet.
 func (db *appdbimpl) getLatestMessageByConversationID(conversationID string) (*Message, error) {
+
 	var msg Message
 
+	// SQL query
 	err := db.c.QueryRow(
 		`SELECT m.id, m.conversation_id, m.sender_id, u.username, m.type, m.content,
 		        m.reply_to_message_id, m.forwarded_from_message_id, m.created_at, m.deleted
