@@ -295,7 +295,7 @@ func (rt *_router) commentMessage(w http.ResponseWriter, r *http.Request, ps htt
 			return
 		}
 
-		//User can only react once to the comment
+		// User can only react once to the comment
 		if errors.Is(err, database.ErrUserAlreadyReacted) {
 			writeJSON(w, http.StatusConflict, errorResponse{
 				Message: "you already reacted to this message",

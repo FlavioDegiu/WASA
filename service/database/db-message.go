@@ -22,7 +22,7 @@ func (db *appdbimpl) getMessageByID(messageID string) (Message, error) {
 
 	var msg Message
 
-	//Base query. Join with 'users' because senderUsername is needed
+	// Base query. Join with 'users' because senderUsername is needed
 	err := db.c.QueryRow(
 		`SELECT m.id, m.conversation_id, m.sender_id, u.username, m.type, m.content,
 		        m.reply_to_message_id, m.forwarded_from_message_id, m.created_at, m.deleted
@@ -46,7 +46,7 @@ func (db *appdbimpl) getMessageByID(messageID string) (Message, error) {
 		return Message{}, err
 	}
 
-	//Enrich the message data with data from the database using helper functions
+	// Enrich the message data with data from the database using helper functions
 	msg.DeliveredToAll, err = db.IsMessageDeliveredToAll(msg.ID)
 	if err != nil {
 		return Message{}, fmt.Errorf("error computing message delivery status: %w", err)
