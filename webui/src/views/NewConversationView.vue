@@ -96,28 +96,36 @@ export default {
   },
   data() {
     return {
-      users: [],
-      loading: false,
-      errorMessage: "",
-      groupName: "",
-      selectedUserIds: [],
-      currentUserId: localStorage.getItem("token") || "",
+      users: [], // The list of candidate users loaded from backend.
+      loading: false, // Whether the page is currently loading users.
+      errorMessage: "", // Current error to show in the UI.
+      groupName: "", // The entered name for a new group.
+      selectedUserIds: [], // The list of selected member IDs for group creation.
+      currentUserId: localStorage.getItem("token") || "", // The current authenticated user ID taken from local storage.
     };
   },
+
+  // Immediately load users
   async mounted() {
     await this.loadUsers();
   },
+
   methods: {
+    
     // Loads all users except the currently authenticated one.
     async loadUsers() {
       this.loading = true;
       this.errorMessage = "";
 
       try {
+
+        // API call
         const response = await api.get("/users");
         const items = response.data.items || [];
 
+        // Exclude myself
         this.users = items.filter((user) => user.id !== this.currentUserId);
+      
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;
@@ -134,12 +142,16 @@ export default {
       this.errorMessage = "";
 
       try {
+
+        // API call
         const response = await api.post("/conversations", {
           isGroup: false,
           members: [userId],
         });
 
+        // Redirect to conversation
         this.$router.push(`/conversations/${response.data.id}`);
+      
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;
@@ -153,24 +165,31 @@ export default {
     async createGroupConversation() {
       this.errorMessage = "";
 
+      // Group name needed
       if (!this.groupName) {
         this.errorMessage = "Group name is required.";
         return;
       }
 
+      // Members needed
       if (this.selectedUserIds.length === 0) {
         this.errorMessage = "Select at least one user.";
         return;
       }
 
       try {
+
+        // API call
         const response = await api.post("/conversations", {
           isGroup: true,
           name: this.groupName,
           members: this.selectedUserIds,
         });
+        
 
+        // Redirect the user to the group
         this.$router.push(`/conversations/${response.data.id}`);
+      
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;

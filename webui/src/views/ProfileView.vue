@@ -93,26 +93,33 @@ export default {
   },
   data() {
     return {
-      user: null,
-      loading: false,
-      errorMessage: "",
-      newName: "",
+      user: null, // The current authenticated user object loaded from backend.
+      loading: false, // Whether the profile page is currently loading.
+      errorMessage: "", // Current UI error message.
+      newName: "", // Input state for updating username.
       newPhoto: "",
       selectedProfilePhotoFile: null,
   selectedProfilePhotoPreview: "",
     };
   },
+
+  // Load immediately
   async mounted() {
     await this.loadProfile();
   },
   methods: {
+
+    // Loads the profile info for the logged user
     async loadProfile() {
       this.loading = true;
       this.errorMessage = "";
 
       try {
+
+        // API call
         const response = await api.get("/users/me");
         this.user = response.data;
+      
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;
@@ -123,13 +130,20 @@ export default {
         this.loading = false;
       }
     },
+
+    // Update the name with the text box contents
     async updateName() {
       if (!this.newName) return;
 
       try {
+
+        // API call
         await api.put("/users/me/name", { name: this.newName });
         this.newName = "";
+        
+        // Reload to see changes
         await this.loadProfile();
+      
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;
@@ -156,11 +170,16 @@ export default {
           return;
         }
 
+        // API call
         await api.put("/users/me/photo", { photo: photoToSend });
 
+        // Clear
         this.newPhoto = "";
         this.clearSelectedProfilePhoto();
+        
+        // Refresh to see changes
         await this.loadProfile();
+      
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;
