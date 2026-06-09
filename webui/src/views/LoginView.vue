@@ -4,13 +4,21 @@
       <div class="col-12 col-md-6 col-lg-4">
         <div class="card shadow-sm">
           <div class="card-body">
+
+            <!-- Page title -->
             <h1 class="h3 mb-4 text-center">WASAText Login</h1>
 
+            <!-- Error message component (if not empty, will display an error) -->
             <ErrorMsg v-if="errorMessage" :msg="errorMessage" />
 
+            <!--
+            Submission form, binded to the doLogin JS func 
+            (prevent stops the browser from standard behaviour)
+            -->
             <form @submit.prevent="doLogin">
               <div class="mb-3">
                 <label for="username" class="form-label">Username</label>
+                <!-- bind username variable to field -->
                 <input
                   id="username"
                   v-model.trim="username"
@@ -22,11 +30,13 @@
                 />
               </div>
 
+              <!-- disable the Login button when the page state has loading = True -->
               <button class="btn btn-primary w-100" type="submit" :disabled="loading">
                 <span v-if="!loading">Login</span>
                 <span v-else>Loading...</span>
               </button>
             </form>
+
           </div>
         </div>
       </div>
@@ -62,10 +72,15 @@ export default {
       this.loading = true;
 
       try {
-        // Call the simplified login endpoint.
+        // Call the simplified login endpoint using axios (api.post).
         const response = await api.post("/session", {
           name: this.username,
         });
+
+        /*
+        The application uses local storage
+        so multiple pages of the same app will always have the same user logged in
+        */
 
         // Save the returned identifier to reuse it as Bearer token.
         localStorage.setItem("token", response.data.identifier);

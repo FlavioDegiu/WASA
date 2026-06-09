@@ -1,5 +1,7 @@
 <template>
   <div class="container py-4">
+
+    <!-- Page header with Profile, Logout and New Conversation buttons-->
     <div class="d-flex justify-content-between align-items-center mb-4">
       <h1 class="h3 mb-0">Conversations</h1>
       <div class="d-flex gap-2">
@@ -16,9 +18,13 @@
     </div>
 
     <ErrorMsg v-if="errorMessage" :msg="errorMessage" />
-
+    
     <LoadingSpinner v-if="loading" />
 
+    <!--
+    When the page is not loading render each conversation
+    in the conversations array as a clickable list item
+    -->
     <div v-else class="list-group">
       <router-link
         v-for="conversation in conversations"
@@ -28,8 +34,8 @@
       >
         <div class="d-flex w-100 justify-content-between align-items-start">
           <div class="d-flex align-items-start gap-3">
-            <!-- Conversation photo -->
             <div>
+              <!-- Conversation photo -->
               <img
                 v-if="hasPhoto(conversation.photo)"
                 :src="conversation.photo"
@@ -47,6 +53,7 @@
             </div>
 
             <div>
+              <!-- Conversation title and preview -->
               <h5 class="mb-1">{{ conversation.title }}</h5>
               <p class="mb-1 text-muted">
                 {{ formatPreview(conversation.lastMessage) }}
@@ -54,12 +61,14 @@
             </div>
           </div>
 
+          <!-- Updated time -->
           <small class="text-muted">
             {{ formatDateTime(conversation.updatedAt) }}
           </small>
         </div>
       </router-link>
 
+      <!-- Empty state message -->
       <div v-if="conversations.length === 0" class="text-muted">
         No conversations yet.
       </div>
@@ -78,15 +87,20 @@ export default {
     ErrorMsg,
     LoadingSpinner,
   },
+
   data() {
     return {
-      conversations: [],
-      loading: false,
-      errorMessage: "",
-      refreshIntervalId: null,
+      conversations: [], // The array of conversation summaries loaded from the backend.
+      loading: false, // Whether the initial/foreground load is in progress. 
+      errorMessage: "", // Any current error message to show.
+      refreshIntervalId: null, // Stores the timer ID used for auto-refresh, so it can later be cleared.
     };
   },
-
+  /*
+  Immideately
+    load conversations
+    start auto refreshing
+  */
   async mounted() {
     await this.loadConversations();
     this.startAutoRefresh();

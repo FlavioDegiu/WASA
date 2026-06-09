@@ -1,6 +1,4 @@
-
 <template>
-<!-- First simpe version, temporary -->
   <div class="container py-4">
     <div class="mb-3">
       <router-link to="/conversations" class="btn btn-outline-secondary btn-sm">
@@ -435,6 +433,7 @@ import LoadingSpinner from "../components/LoadingSpinner.vue";
 
 export default {
   name: "ConversationView",
+  // Recieve the conversationId as a prop directly from the route
   props: ["conversationId"],
   components: {
     ErrorMsg,
@@ -442,30 +441,35 @@ export default {
   },
   data() {
     return {
-      conversation: null,
-      loading: false,
-      sending: false,
-      errorMessage: "",
-      newMessage: "",
-      currentUserId: localStorage.getItem("token") || "",
-      groupNameInput: "",
-      groupPhotoInput: "",
-      availableUsers: [],
-      selectedUserToAdd: "",
-      refreshIntervalId: null,
-      forwardingMessageId: "",
-      availableForwardConversations: [],
-      selectedForwardConversationId: "",
-      availableForwardUsers: [],
-      selectedForwardUserId: "",
-      replyingToMessage: null,
-      selectedImageFile: null,
-      selectedImagePreview: "",
-      selectedGroupPhotoFile: null,
-      selectedGroupPhotoPreview: "",
+      conversation: null, // the currently loaded conversation object from backend
+      loading: false, // whether the page is loading the conversation
+      sending: false, // whether a message send is currently in progress
+      errorMessage: "", // current error to show
+      newMessage: "", // message that is being typed
+      currentUserId: localStorage.getItem("token") || "", // current user id
+      groupNameInput: "", // input for the group settings
+      groupPhotoInput: "", // input for the group settings
+      availableUsers: [], // users in the conversation
+      selectedUserToAdd: "", // input for the group management
+      refreshIntervalId: null, // polling interval
+      forwardingMessageId: "", // message that is being forwarded
+      availableForwardConversations: [], // list of convs that the message can be forwarded
+      selectedForwardConversationId: "", // conversation that the message is being forwarded to
+      availableForwardUsers: [], // list of users that the message can be forwarded (different from conversations, which includes groups and already started conversations)
+      selectedForwardUserId: "", // user that the message is being forwarded to
+      replyingToMessage: null, // message that is being replied
+      selectedImageFile: null, // image file that is being attached
+      selectedImagePreview: "", // the rendered image file selectedImageFile
+      selectedGroupPhotoFile: null, // image file that is being set as the group image
+      selectedGroupPhotoPreview: "", // the rendered image file selectedGroupPhotoFile
     };
   },
 
+  /*
+  Immideately
+    load conversation
+    start auto refreshing
+  */
   async mounted() {
     await this.loadConversation();
     this.startAutoRefresh();
@@ -474,6 +478,7 @@ export default {
     this.stopAutoRefresh();
   },
 
+  // clear recipients when a new user is being selected for forwarding
   watch: {
     selectedForwardConversationId(newValue) {
       if (newValue) {
@@ -488,6 +493,7 @@ export default {
   },
 
   methods: {
+    
     // Returns the text that should be shown for a message.
     // Deleted messages keep their original content in the database, but the UI hides it from the user
     getVisibleMessageContent(message) {
@@ -579,6 +585,7 @@ export default {
       // Do not send empty messages if there is no selected image.
       if (!trimmedText && !this.selectedImageFile) return;
 
+      // Stop autorefreshing when sending (will interfere with the send progress)
       this.sending = true;
       this.errorMessage = "";
       this.stopAutoRefresh();
@@ -587,6 +594,9 @@ export default {
         let payload;
 
         if (this.selectedImageFile) {
+          
+          // Image payload
+          
           // Read the image as base64 data URL and pack it together with the caption.
           const imageData = await this.readSelectedImageAsDataUrl();
 
@@ -599,6 +609,7 @@ export default {
             replyToMessageId: this.replyingToMessage ? this.replyingToMessage.id : "",
           };
         } else {
+          // Image - less payload
           payload = {
             type: "text",
             content: trimmedText,
@@ -606,6 +617,7 @@ export default {
           };
         }
 
+        // Backend call
         await api.post(`/conversations/${this.conversationId}/messages`, payload);
 
         // Reset composer state after success.
@@ -618,7 +630,9 @@ export default {
           this.$refs.imageInput.value = "";
         }
 
+        // Refresh conversation
         await this.loadConversation();
+      
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;
@@ -642,6 +656,7 @@ export default {
     async markMessagesAsRead() {
       if (!this.conversation || !this.conversation.messages) return;
 
+      // Select all messages except mine and call PUT read for each one
       try {
         const requests = this.conversation.messages
           .filter((message) => !this.isMyMessage(message))
@@ -649,7 +664,7 @@ export default {
 
         await Promise.all(requests);
       } catch (e) {
-        // Do not block the page if read tracking fails This is a secondary action, so just log it for debugging.
+        // Do not block the page if read tracking fails. This is a secondary action, so just log it for debugging.
         console.error("Cannot mark messages as read:", e);
       }
     },
@@ -659,12 +674,15 @@ export default {
     async deleteMessage(messageId) {
       if (!messageId) return;
 
+      // show confirmation dialog
       const confirmed = window.confirm("Do you want to delete this message?");
       if (!confirmed) return;
 
       this.errorMessage = "";
 
       try {
+
+        // API call
         await api.delete(`/messages/${messageId}`);
 
         // Reload the conversation so the UI reflects the deleted state.
@@ -685,6 +703,8 @@ export default {
       this.errorMessage = "";
 
       try {
+        
+        // API call
         await api.post(`/messages/${messageId}/comments`, {
           content,
         });
@@ -707,6 +727,8 @@ export default {
       this.errorMessage = "";
 
       try {
+
+        // API call
         await api.delete(`/messages/${messageId}/comments/${commentId}`);
 
         // Reload the conversation so the removed comment disappears from the UI.
@@ -729,6 +751,7 @@ export default {
     async updateGroupName() {
       if (!this.conversation || !this.conversation.id) return;
 
+      // Get the name from the form
       const newName = this.groupNameInput.trim();
       if (!newName) {
         this.errorMessage = "Group name must be a non-empty string.";
@@ -738,12 +761,15 @@ export default {
       this.errorMessage = "";
 
       try {
+        
+        // API call
         await api.put(`/groups/${this.conversation.id}/name`, {
           name: newName,
         });
 
         // Reload the conversation so the UI shows the updated name.
         await this.loadConversation();
+      
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;
@@ -760,6 +786,8 @@ export default {
       this.errorMessage = "";
 
       try {
+
+        // Get the photo from the form
         let photoToSend = this.groupPhotoInput.trim();
 
         // If a file was selected, prefer it over the plain text field.
@@ -772,12 +800,17 @@ export default {
           return;
         }
 
+        // API call
         await api.put(`/groups/${this.conversation.id}/photo`, {
           photo: photoToSend,
         });
 
+        // Cleanup
         this.clearSelectedGroupPhoto();
+
+        // Reload
         await this.loadConversation();
+      
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;
@@ -824,6 +857,8 @@ export default {
       this.errorMessage = "";
 
       try {
+
+        // API call
         await api.post(`/groups/${this.conversation.id}/members`, {
           userId,
         });
@@ -833,6 +868,7 @@ export default {
 
         // Reload the conversation so the new member appears immediately.
         await this.loadConversation();
+      
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;
@@ -852,10 +888,13 @@ export default {
       this.errorMessage = "";
 
       try {
+
+        // API call
         await api.delete(`/groups/${this.conversation.id}/members/me`);
 
         // After leaving the group, this user should no longer stay on its page.
         this.$router.push("/conversations");
+     
       } catch (e) {
         if (e.response && e.response.data && e.response.data.message) {
           this.errorMessage = e.response.data.message;
@@ -896,20 +935,21 @@ export default {
 
     // Returns the checkmark string to show for one of the current user's messages.
     getMessageCheckmarks(message) {
+      
       // Received messages must not show any checkmarks.
       if (!this.isMyMessage(message)) {
         return "";
       }
 
       if (message.status && message.status.readByAll) {
-        return "✓✓";
+        return "✓✓✓";
       }
 
       if (message.status && message.status.deliveredToAll) {
-        return "✓";
+        return "✓✓";
       }
 
-      return "";
+      return "✓";
     },
 
     // Returns true if the current user already reacted to this message
