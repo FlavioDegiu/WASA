@@ -83,7 +83,9 @@ func run() error {
 
 	// Start Database
 	logger.Println("initializing database support")
-	dbconn, err := sql.Open("sqlite3", cfg.DB.Filename+"?_foreign_keys=1&_journal_mode=WAL&_busy_timeout=5000") // Foreign keys behavious, Concurrent R/W behavious, Busy Timeout
+	// Enable foreign key enforcement, WAL mode for concurrent access,
+	// and a 5-second busy timeout.
+	dbconn, err := sql.Open("sqlite3", cfg.DB.Filename+"?__keys=1&_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
 		logger.WithError(err).Error("error opening SQLite DB")
 		return fmt.Errorf("opening SQLite: %w", err)
